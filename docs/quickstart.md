@@ -135,5 +135,5 @@ make gate          # full CI gate locally: lint + type + test + build
 
 - [**Architecture**](architecture.md) — how the pieces fit together.
 - [**CLI reference**](cli.md) — every flag, with examples.
-- [**Source-code hunter deep dive**](openglass.md) — the evidence
-  ladder, variant loops, mechanism memory, adversarial verifier.
+- [**LLM providers**](providers.md) — OpenRouter, Ollama, LM Studio,
+  vLLM, Together, Groq, DeepSeek, OpenAI direct.

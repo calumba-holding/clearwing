@@ -139,9 +139,8 @@ CI gate, release-hygiene scaffolding, and MkDocs documentation site.
   bug and feature templates with security-lane routing.
 - **Docs site** (MkDocs Material): `docs/index.md`, `docs/quickstart.md`,
   `docs/architecture.md`, `docs/cli.md`, `docs/api.md` (mkdocstrings
-  autogen), `docs/openglass.md` (the Overwing design deep dive). Built
-  with `mkdocs build --strict`, deployed to GitHub Pages via a paths-
-  filter-gated workflow.
+  autogen). Built with `mkdocs build --strict`, deployed to GitHub
+  Pages via a paths-filter-gated workflow.
 - **`uv.lock`** — 4446-line lockfile pinning 154 packages against
   Python 3.12 for bit-for-bit reproducible dev environments via
   `uv sync --all-extras`.

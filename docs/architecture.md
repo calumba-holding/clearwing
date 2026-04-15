@@ -12,7 +12,7 @@ bus.
                   │                               │
                   ▼                               ▼
 ┌─────────────────────────┐      ┌────────────────────────────────┐
-│  Network-pentest agent  │      │   Source-code hunter (Overwing)│
+│  Network-pentest agent  │      │   Source-code hunter           │
 │  clearwing.agent.graph  │      │   clearwing.sourcehunt.runner  │
 │                         │      │                                │
 │  build_react_graph      │      │  Preprocessor → Ranker → Pool  │
@@ -129,9 +129,6 @@ input for the next:
     evidence level descending. Optional `--export-disclosures`
     writes pre-filled MITRE CVE-request and HackerOne templates for
     every verified finding `>= root_cause_explained`.
-
-The `openglass.md` deep dive walks through each stage with concrete
-examples.
 
 ## The shared Finding type
 

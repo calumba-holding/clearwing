@@ -1,4 +1,4 @@
-"""Overwing source-code vulnerability hunting pipeline.
+"""Clearwing source-code vulnerability hunting pipeline.
 
 A file-parallel agent-driven discovery pipeline:
     preprocess (clone + enumerate + tag)

@@ -3,7 +3,7 @@
 Wraps the `gh api` CLI so we don't add a new Python SDK dependency. On each
 commit the Commit Monitor scans, this publisher posts a check run with:
 
-    - name: "Overwing Sourcehunt"
+    - name: "Clearwing Sourcehunt"
     - head_sha: commit SHA
     - status: completed
     - conclusion: failure (critical/high) | neutral (findings) | success (clean)
@@ -71,7 +71,7 @@ class GitHubChecksConfig:
     repo_path: str  # local git clone — used to detect owner/repo
     owner: str | None = None  # override auto-detection
     repo: str | None = None  # override auto-detection
-    check_name: str = "Overwing Sourcehunt"
+    check_name: str = "Clearwing Sourcehunt"
     gh_binary: str = "gh"
     details_url: str | None = None  # optional URL to the full report
 
@@ -246,7 +246,7 @@ class GitHubChecksPublisher:
 
     def _build_title(self, findings: list[Finding]) -> str:
         if not findings:
-            return "Overwing: no findings"
+            return "Clearwing: no findings"
         counts = _severity_counts(findings)
         parts = []
         for sev in ("critical", "high", "medium", "low", "info"):

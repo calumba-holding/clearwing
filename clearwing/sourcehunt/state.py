@@ -1,4 +1,4 @@
-"""State schemas for the Overwing source-hunt pipeline.
+"""State schemas for the Clearwing source-hunt pipeline.
 
 Critical schema discipline: every v0.1 type accepts v0.2/v0.3 fields with
 sensible defaults. Future phases land as feature additions, not refactors.

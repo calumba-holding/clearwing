@@ -107,4 +107,4 @@ def test_prompt_template_mentions_hunt_source_code():
     from clearwing.agent.prompts import SYSTEM_PROMPT_TEMPLATE
 
     assert "hunt_source_code" in SYSTEM_PROMPT_TEMPLATE
-    assert "Overwing" in SYSTEM_PROMPT_TEMPLATE
+    assert "source-hunt" in SYSTEM_PROMPT_TEMPLATE

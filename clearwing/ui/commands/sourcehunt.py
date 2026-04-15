@@ -1,4 +1,4 @@
-"""Sourcehunt CLI subcommand — runs the Overwing source-code vulnerability pipeline."""
+"""Sourcehunt CLI subcommand — runs the Clearwing source-code vulnerability pipeline."""
 
 import os
 import sys
@@ -7,7 +7,7 @@ import sys
 def add_parser(subparsers):
     parser = subparsers.add_parser(
         "sourcehunt",
-        help="Source-code vulnerability hunting (Overwing pipeline)",
+        help="Source-code vulnerability hunting (source-hunt pipeline)",
     )
     parser.add_argument("repo", help="Git URL or local path to a repository")
     parser.add_argument("--branch", default="main", help="Git branch to clone (default: main)")
@@ -128,8 +128,8 @@ def add_parser(subparsers):
     )
     parser.add_argument(
         "--github-check-name",
-        default="Overwing Sourcehunt",
-        help="Name of the check run (default: Overwing Sourcehunt)",
+        default="Clearwing Sourcehunt",
+        help="Name of the check run (default: Clearwing Sourcehunt)",
     )
     parser.add_argument(
         "--webhook",

@@ -41,7 +41,6 @@ nav:
   - Architecture: architecture.md
   - CLI reference: cli.md
   - API reference: api.md
-  - Source-code hunter deep dive: openglass.md
 
 markdown_extensions:
   - admonition

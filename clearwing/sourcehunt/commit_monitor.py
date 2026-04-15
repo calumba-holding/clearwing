@@ -49,7 +49,7 @@ class CommitMonitorConfig:
     # v0.4 GitHub Checks integration
     enable_github_checks: bool = False
     github_checks_publisher: GitHubChecksPublisher | None = None
-    github_check_name: str = "Overwing Sourcehunt"
+    github_check_name: str = "Clearwing Sourcehunt"
     github_owner: str | None = None
     github_repo: str | None = None
 

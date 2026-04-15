@@ -28,7 +28,7 @@ def hunt_source_code(
     budget_usd: float = 2.0,
     output_dir: str = "./sourcehunt-results",
 ) -> str:
-    """Run the Overwing source-code vulnerability hunting pipeline against a repo.
+    """Run the Clearwing source-code vulnerability hunting pipeline against a repo.
 
     Use this when the interactive agent has access to a target's source code
     (via a github URL, a local clone, or an MCP filesystem path) and wants

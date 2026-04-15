@@ -11,7 +11,7 @@ Clearwing is a dual-mode offensive-security tool:
   Kali toolbox when one is configured. 63 tools, gated through a
   guardrail/approval layer so destructive operations pause for a
   human.
-- **Source-code hunter** (Overwing) — a file-parallel agent-driven
+- **Source-code hunter** — a file-parallel agent-driven
   discovery pipeline that ranks source files by attack surface, fans
   out per-file hunter agents, uses ASan/UBSan crashes as ground
   truth, verifies findings with an adversarial second-pass agent,
@@ -29,7 +29,6 @@ Clearwing is a dual-mode offensive-security tool:
 | [**Architecture**](architecture.md) | How the ReAct loops, sandboxes, capabilities layer, Finding dataclass, and knowledge graph fit together |
 | [**CLI reference**](cli.md) | Every `clearwing <subcommand>` flag, with examples |
 | [**API reference**](api.md) | `clearwing.findings.Finding`, `clearwing.agent.graph.build_react_graph`, the sourcehunt runner, auto-generated from docstrings |
-| [**Source-code hunter deep dive**](openglass.md) | The original integration design for Overwing — ranker, hunter specialists, evidence ladder, mechanism memory, variant loops |
 
 ## Project status
 

@@ -10,7 +10,7 @@ Clearwing is a dual-mode offensive-security tool:
   runs sandboxed Kali tools, attempts exploits (gated through a
   human-approval guardrail), and writes reports to a persistent
   knowledge graph.
-- **Source-code hunter** (Overwing) — a file-parallel agent-driven
+- **Source-code hunter** — a file-parallel agent-driven
   pipeline that ranks source files, fans out per-file hunter agents,
   uses ASan/UBSan crashes as ground truth, verifies findings with an
   adversarial second-pass agent, optionally generates validated
@@ -105,7 +105,7 @@ including credentials, session resume, and mission-mode operation.
 
 ```
 ┌──────────────────────┐      ┌────────────────────────────────┐
-│ Network-pentest agent│      │ Source-code hunter (Overwing)  │
+│ Network-pentest agent│      │ Source-code hunter             │
 │ clearwing.agent.graph│      │ clearwing.sourcehunt.runner    │
 │  (63 tools, ReAct)   │      │                                │
 │                      │      │ preprocess → rank → pool →     │
@@ -134,7 +134,6 @@ Deep dives live in [`docs/`](docs/):
 | [`docs/architecture.md`](docs/architecture.md) | Both pipelines, substrate, capability gating, tool layout |
 | [`docs/cli.md`](docs/cli.md) | Every subcommand flag, grouped by workflow |
 | [`docs/api.md`](docs/api.md) | API reference (mkdocstrings autogen) |
-| [`docs/openglass.md`](docs/openglass.md) | Overwing design document (93 KB deep dive) |
 
 Once the GitHub Pages workflow ships, docs will be hosted at
 <https://lazarus-ai.github.io/clearwing/>.

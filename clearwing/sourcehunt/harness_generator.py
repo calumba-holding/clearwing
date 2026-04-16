@@ -23,6 +23,7 @@ cold-start hunters remain the fallback.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -33,7 +34,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from clearwing.llm import AsyncLLMClient
-from clearwing.llm.compat import invoke_text_compat
 from clearwing.sandbox.hunter_sandbox import HunterSandbox
 
 from .state import FileTarget
@@ -314,11 +314,13 @@ class HarnessGenerator:
             f"File source (may be truncated):\n\n{file_source}\n"
         )
         try:
-            response_text = invoke_text_compat(
-                self.llm,
-                system=HARNESS_GEN_SYSTEM_PROMPT,
-                user=user_msg,
+            response = asyncio.run(
+                self.llm.aask_text(
+                    system=HARNESS_GEN_SYSTEM_PROMPT,
+                    user=user_msg,
+                )
             )
+            response_text = response.first_text() or ""
         except Exception:
             logger.debug("Harness-gen LLM call failed", exc_info=True)
             return None

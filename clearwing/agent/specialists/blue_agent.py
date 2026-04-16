@@ -1,5 +1,4 @@
 from clearwing.agent.graph import _create_llm
-from clearwing.llm import HumanMessage, SystemMessage
 
 BLUE_AGENT_PROMPT = """You are Clearwing Blue Agent, a defensive security operator. Your goal is to detect and block the Red Agent's attacks.
 You have access to:
@@ -22,8 +21,8 @@ class BlueAgent:
 
     def respond(self, state: dict) -> str:
         messages = [
-            SystemMessage(content=BLUE_AGENT_PROMPT),
-            HumanMessage(content=f"Current infrastructure state: {state}"),
+            {"role": "system", "content": BLUE_AGENT_PROMPT},
+            {"role": "user", "content": f"Current infrastructure state: {state}"},
         ]
         response = self.llm.invoke(messages)
         return response.content if isinstance(response.content, str) else str(response.content)

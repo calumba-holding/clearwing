@@ -7,9 +7,12 @@ suspicion-level variant findings.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
+
+from genai_pyo3 import ChatResponse
 
 from clearwing.sourcehunt.runner import SourceHuntRunner
 from clearwing.sourcehunt.variant_loop import (
@@ -24,12 +27,14 @@ from clearwing.sourcehunt.variant_loop import (
 FIXTURE_C_PROPAGATION = Path(__file__).parent / "fixtures" / "vuln_samples" / "c_propagation"
 
 
-def _mock_llm(payload: dict) -> MagicMock:
-    llm = MagicMock()
-    response = MagicMock()
-    response.content = json.dumps(payload)
-    llm.invoke.return_value = response
+def _mock_llm(payload: dict) -> AsyncMock:
+    llm = AsyncMock()
+    llm.aask_text.return_value = ChatResponse(content=[{"text": json.dumps(payload)}])
     return llm
+
+
+def _run(coro):
+    return asyncio.run(coro)
 
 
 def _make_finding(**kwargs) -> dict:
@@ -59,24 +64,22 @@ class TestVariantPatternGenerator:
             }
         )
         gen = VariantPatternGenerator(llm)
-        pattern = gen.generate(_make_finding())
+        pattern = _run(gen.agenerate(_make_finding()))
         assert pattern is not None
         assert "memcpy" in pattern.grep_regex
         assert "memcpy" in pattern.semantic_description
 
     def test_invalid_response_returns_none(self):
-        llm = MagicMock()
-        resp = MagicMock()
-        resp.content = "no json here"
-        llm.invoke.return_value = resp
+        llm = AsyncMock()
+        llm.aask_text.return_value = ChatResponse(content=[{"text": "no json here"}])
         gen = VariantPatternGenerator(llm)
-        assert gen.generate(_make_finding()) is None
+        assert _run(gen.agenerate(_make_finding())) is None
 
     def test_llm_exception_returns_none(self):
-        llm = MagicMock()
-        llm.invoke.side_effect = Exception("rate limited")
+        llm = AsyncMock()
+        llm.aask_text.side_effect = Exception("rate limited")
         gen = VariantPatternGenerator(llm)
-        assert gen.generate(_make_finding()) is None
+        assert _run(gen.agenerate(_make_finding())) is None
 
 
 # --- VariantSearcher --------------------------------------------------------
@@ -136,7 +139,7 @@ class TestVariantLoop:
         )
         loop = VariantLoop(pattern_gen=VariantPatternGenerator(llm))
         verified = [_make_finding(file="src/codec_a.c", line_number=9)]
-        result = loop.run_once(verified, str(FIXTURE_C_PROPAGATION))
+        result = _run(loop.arun_once(verified, str(FIXTURE_C_PROPAGATION)))
 
         assert isinstance(result, VariantLoopResult)
         assert result.patterns_generated == 1
@@ -159,10 +162,12 @@ class TestVariantLoop:
 
         # Pre-claim codec_b.c lines 6-10
         already_seen = {("src/codec_b.c", i) for i in range(1, 15)}
-        result = loop.run_once(
-            [_make_finding(file="src/codec_a.c", line_number=9)],
-            str(FIXTURE_C_PROPAGATION),
-            already_seen_locations=already_seen,
+        result = _run(
+            loop.arun_once(
+                [_make_finding(file="src/codec_a.c", line_number=9)],
+                str(FIXTURE_C_PROPAGATION),
+                already_seen_locations=already_seen,
+            )
         )
         for seed in result.seeds:
             assert seed.match.file != "src/codec_b.c"
@@ -170,7 +175,7 @@ class TestVariantLoop:
     def test_run_once_with_no_verified_findings(self):
         llm = _mock_llm({"grep_regex": "x", "semantic_description": "x"})
         loop = VariantLoop(pattern_gen=VariantPatternGenerator(llm))
-        result = loop.run_once([], str(FIXTURE_C_PROPAGATION))
+        result = _run(loop.arun_once([], str(FIXTURE_C_PROPAGATION)))
         assert result.seeds == []
         assert result.patterns_generated == 0
 
@@ -178,38 +183,38 @@ class TestVariantLoop:
         llm = _mock_llm({"grep_regex": r".", "semantic_description": "any"})
         config = VariantLoopConfig(max_variants_per_finding=2)
         loop = VariantLoop(pattern_gen=VariantPatternGenerator(llm), config=config)
-        result = loop.run_once(
-            [_make_finding()],
-            str(FIXTURE_C_PROPAGATION),
+        result = _run(
+            loop.arun_once(
+                [_make_finding()],
+                str(FIXTURE_C_PROPAGATION),
+            )
         )
         # Each verified finding contributes at most `max_variants_per_finding` seeds
         assert len(result.seeds) <= 2
 
     def test_pattern_gen_failure_is_per_finding(self):
         """If pattern generation fails for one finding, others still run."""
-        llm = MagicMock()
-        llm.invoke.side_effect = [
+        llm = AsyncMock()
+        llm.aask_text.side_effect = [
             Exception("rate limited"),  # first finding fails
-            _mock_llm_response(
-                {"grep_regex": "memcpy", "semantic_description": "ok"}
+            ChatResponse(
+                content=[
+                    {"text": json.dumps({"grep_regex": "memcpy", "semantic_description": "ok"})}
+                ]
             ),  # second succeeds
         ]
         loop = VariantLoop(pattern_gen=VariantPatternGenerator(llm))
-        result = loop.run_once(
-            [
-                _make_finding(id="f1", file="src/codec_a.c", line_number=9),
-                _make_finding(id="f2", file="src/codec_b.c", line_number=5),
-            ],
-            str(FIXTURE_C_PROPAGATION),
+        result = _run(
+            loop.arun_once(
+                [
+                    _make_finding(id="f1", file="src/codec_a.c", line_number=9),
+                    _make_finding(id="f2", file="src/codec_b.c", line_number=5),
+                ],
+                str(FIXTURE_C_PROPAGATION),
+            )
         )
         # Only one pattern generated (the second succeeded)
         assert result.patterns_generated == 1
-
-
-def _mock_llm_response(payload: dict) -> MagicMock:
-    resp = MagicMock()
-    resp.content = json.dumps(payload)
-    return resp
 
 
 # --- Runner integration ----------------------------------------------------
@@ -231,9 +236,11 @@ class TestMultiIterationDriver:
             pattern_gen=VariantPatternGenerator(llm),
             config=VariantLoopConfig(max_iterations=5),
         )
-        result = loop.run(
-            [_make_finding(file="src/codec_a.c", line_number=9)],
-            str(FIXTURE_C_PROPAGATION),
+        result = _run(
+            loop.arun(
+                [_make_finding(file="src/codec_a.c", line_number=9)],
+                str(FIXTURE_C_PROPAGATION),
+            )
         )
         # 1 iteration, fixpoint reached
         assert result.iterations == 1
@@ -255,9 +262,11 @@ class TestMultiIterationDriver:
             pattern_gen=VariantPatternGenerator(llm),
             config=VariantLoopConfig(max_iterations=5),
         )
-        result = loop.run(
-            [_make_finding(file="src/codec_a.c", line_number=9)],
-            str(FIXTURE_C_PROPAGATION),
+        result = _run(
+            loop.arun(
+                [_make_finding(file="src/codec_a.c", line_number=9)],
+                str(FIXTURE_C_PROPAGATION),
+            )
         )
         # First pass finds variants; second pass finds nothing (already_seen
         # now includes them). Stops at 2.
@@ -266,16 +275,8 @@ class TestMultiIterationDriver:
 
     def test_run_respects_max_iterations_cap(self):
         """max_iterations hard-cap the loop."""
-        llm = MagicMock()
         # Return a pattern that always matches something
-        response = MagicMock()
-        response.content = json.dumps(
-            {
-                "grep_regex": "memcpy",
-                "semantic_description": "memcpy",
-            }
-        )
-        llm.invoke.return_value = response
+        llm = _mock_llm({"grep_regex": "memcpy", "semantic_description": "memcpy"})
 
         loop = VariantLoop(
             pattern_gen=VariantPatternGenerator(llm),
@@ -284,9 +285,11 @@ class TestMultiIterationDriver:
                 stop_on_empty_iteration=False,  # force the cap to matter
             ),
         )
-        result = loop.run(
-            [_make_finding(file="src/codec_a.c", line_number=9)],
-            str(FIXTURE_C_PROPAGATION),
+        result = _run(
+            loop.arun(
+                [_make_finding(file="src/codec_a.c", line_number=9)],
+                str(FIXTURE_C_PROPAGATION),
+            )
         )
         assert result.iterations == 1
 
@@ -318,10 +321,12 @@ class TestMultiIterationDriver:
                 )
             ]
 
-        loop.run(
-            [_make_finding(file="src/codec_a.c", line_number=9)],
-            str(FIXTURE_C_PROPAGATION),
-            reverify_callback=reverify,
+        _run(
+            loop.arun(
+                [_make_finding(file="src/codec_a.c", line_number=9)],
+                str(FIXTURE_C_PROPAGATION),
+                reverify_callback=reverify,
+            )
         )
         # At least one reverify call (the first iteration found seeds)
         assert len(reverify_calls) >= 1
@@ -342,10 +347,12 @@ class TestMultiIterationDriver:
         def reverify(seeds):
             return []  # nothing survived re-verification
 
-        result = loop.run(
-            [_make_finding(file="src/codec_a.c", line_number=9)],
-            str(FIXTURE_C_PROPAGATION),
-            reverify_callback=reverify,
+        result = _run(
+            loop.arun(
+                [_make_finding(file="src/codec_a.c", line_number=9)],
+                str(FIXTURE_C_PROPAGATION),
+                reverify_callback=reverify,
+            )
         )
         # The first pass generated a pattern; reverify returned [] so the
         # loop stopped after 1 iteration.
@@ -369,9 +376,11 @@ class TestMultiIterationDriver:
             pattern_gen=VariantPatternGenerator(llm),
             config=config,
         )
-        loop.run(
-            [_make_finding(file="src/codec_a.c", line_number=9)],
-            str(FIXTURE_C_PROPAGATION),
+        _run(
+            loop.arun(
+                [_make_finding(file="src/codec_a.c", line_number=9)],
+                str(FIXTURE_C_PROPAGATION),
+            )
         )
         assert len(callback_calls) == 2
         # Each callback receives a VariantLoopResult
@@ -390,9 +399,11 @@ class TestMultiIterationDriver:
             pattern_gen=VariantPatternGenerator(llm),
             config=VariantLoopConfig(max_iterations=3),
         )
-        result = loop.run(
-            [_make_finding(file="src/codec_a.c", line_number=9)],
-            str(FIXTURE_C_PROPAGATION),
+        result = _run(
+            loop.arun(
+                [_make_finding(file="src/codec_a.c", line_number=9)],
+                str(FIXTURE_C_PROPAGATION),
+            )
         )
         # Total patterns_generated should equal iterations (one per pass)
         assert result.patterns_generated == result.iterations

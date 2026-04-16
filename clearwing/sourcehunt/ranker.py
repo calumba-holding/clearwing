@@ -22,7 +22,6 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from clearwing.llm import AsyncLLMClient
-from clearwing.llm.compat import aask_json_compat
 from clearwing.llm.native import extract_json_array, extract_json_object
 
 from .state import FileTarget
@@ -228,8 +227,7 @@ class Ranker:
             )
             if self.config.llm_timeout_seconds and self.config.llm_timeout_seconds > 0:
                 scores, response = await asyncio.wait_for(
-                    aask_json_compat(
-                        self.llm,
+                    self.llm.aask_json(
                         system=RANKER_SYSTEM_PROMPT,
                         user=user_msg,
                         schema_model=RankedFileScoreResponse,
@@ -238,8 +236,7 @@ class Ranker:
                     timeout=self.config.llm_timeout_seconds,
                 )
             else:
-                scores, response = await aask_json_compat(
-                    self.llm,
+                scores, response = await self.llm.aask_json(
                     system=RANKER_SYSTEM_PROMPT,
                     user=user_msg,
                     schema_model=RankedFileScoreResponse,

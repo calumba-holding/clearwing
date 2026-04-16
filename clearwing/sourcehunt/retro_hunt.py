@@ -25,7 +25,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from clearwing.llm import ChatModel, HumanMessage, SystemMessage
+from clearwing.llm import ChatModel
 
 from .semgrep_sidecar import SemgrepSidecar
 from .state import Finding
@@ -188,8 +188,8 @@ class RetroHunter:
         try:
             response = self.llm.invoke(
                 [
-                    SystemMessage(content=RULE_GEN_SYSTEM_PROMPT),
-                    HumanMessage(content=user_msg),
+                    {"role": "system", "content": RULE_GEN_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_msg},
                 ]
             )
         except Exception:

@@ -9,6 +9,7 @@ Pipeline:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import shutil
@@ -172,6 +173,9 @@ class SourceHuntRunner:
     # --- Public API ---------------------------------------------------------
 
     def run(self) -> SourceHuntResult:
+        return asyncio.run(self.arun())
+
+    async def arun(self) -> SourceHuntResult:
         start_time = time.monotonic()
         self._ensure_output_dir_layout()
         logger.info("Sourcehunt session %s starting on %s", self._session_id, self.repo_url)
@@ -198,7 +202,7 @@ class SourceHuntRunner:
                             ranker_config.chunk_size,
                             ranker_config.max_inflight_chunks,
                         )
-                    Ranker(ranker_llm, ranker_config).rank(files)
+                    await Ranker(ranker_llm, ranker_config).arank(files)
                     logger.info("Ranker completed")
                 except Exception:
                     logger.warning("Ranker failed", exc_info=True)
@@ -293,7 +297,7 @@ class SourceHuntRunner:
                     )
                 )
                 try:
-                    all_findings = pool.run()
+                    all_findings = await pool.arun()
                     logger.info("HunterPool completed with %d findings", len(all_findings))
                 except Exception:
                     logger.warning("HunterPool run failed", exc_info=True)
@@ -325,7 +329,7 @@ class SourceHuntRunner:
                     )
                     for finding in all_findings:
                         try:
-                            result = v.verify(
+                            result = await v.averify(
                                 finding,
                                 file_content=self._load_file_content(repo_path, finding),
                             )
@@ -350,7 +354,7 @@ class SourceHuntRunner:
                                             oracle_sandbox = None
                                             oracle_rerun_poc = None
                                     try:
-                                        passed, diff, notes = v.run_patch_oracle(
+                                        passed, diff, notes = await v.arun_patch_oracle(
                                             finding,
                                             file_content=self._load_file_content(
                                                 repo_path, finding
@@ -396,7 +400,7 @@ class SourceHuntRunner:
                     try:
                         extractor = MechanismExtractor(verifier_llm_for_extract)
                         for finding in verified:
-                            mech = extractor.extract(finding, source_repo=self.repo_url)
+                            mech = await extractor.aextract(finding, source_repo=self.repo_url)
                             if mech is not None:
                                 self._mechanism_store.append(mech)
                     except Exception:
@@ -423,7 +427,7 @@ class SourceHuntRunner:
                         # than the single-pass run_once. Each iteration feeds
                         # its new seeds back in as starting points for the
                         # next pattern generation pass.
-                        variant_result = loop.run(
+                        variant_result = await loop.arun(
                             verified_findings=verified,
                             repo_path=repo_path,
                             already_seen_locations=already_seen,
@@ -470,7 +474,7 @@ class SourceHuntRunner:
                     eligible = filter_by_evidence(verified, "crash_reproduced")
                     for finding in eligible:
                         try:
-                            exploit_result = e.attempt(finding)
+                            exploit_result = await e.aattempt(finding)
                             apply_exploiter_result(finding, exploit_result)
                             if exploit_result.success:
                                 exploited.append(finding)
@@ -502,7 +506,7 @@ class SourceHuntRunner:
                                     patch_sandbox = None
                                     rerun_cb = None
                             try:
-                                attempt = patcher.attempt(
+                                attempt = await patcher.aattempt(
                                     finding,
                                     file_content=self._load_file_content(repo_path, finding),
                                     sandbox=patch_sandbox,

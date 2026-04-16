@@ -16,10 +16,8 @@ from genai_pyo3 import (
     Client,
     JsonSpec,
     Tool,
-    ToolCall,
-    Usage,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, RootModel
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +28,33 @@ def _run_coro_sync(coro):
     except RuntimeError:
         return asyncio.run(coro)
     raise RuntimeError("Synchronous wrapper called from a running event loop")
+
+
+def response_text(response: ChatResponse) -> str:
+    """Coalesce a :class:`ChatResponse`'s text segments into a single string.
+
+    Prefers ``first_text()`` when it is non-empty; falls back to joining
+    every non-empty segment in ``texts()``. Returns ``""`` when the
+    response carries no text at all (e.g. a pure tool-call response).
+    """
+    first = response.first_text()
+    if first:
+        return first
+    return "\n".join(segment for segment in response.texts() if segment)
+
+
+def _is_root_model_type(schema_model: type[BaseModel]) -> bool:
+    return issubclass(schema_model, RootModel)
+
+
+def _validate_schema_response(schema_model: type[BaseModel], text: str) -> BaseModel:
+    try:
+        return schema_model.model_validate_json(text)
+    except Exception:
+        parsed_json = json.loads(text)
+        if isinstance(parsed_json, list) and "results" in schema_model.model_fields:
+            return schema_model.model_validate({"results": parsed_json})
+        raise
 
 
 @dataclass(slots=True)
@@ -136,11 +161,6 @@ class AsyncLLMClient:
             response = await self._with_rate_limit_retries(
                 lambda: self._achat_with_provider_policy(client, request, options)
             )
-
-        text = response.text or ""
-        if not text and response.texts:
-            text = "\n".join(t for t in response.texts if t)
-        response.text = text
         return response
 
     def chat(self, **kwargs: Any) -> ChatResponse:
@@ -188,14 +208,15 @@ class AsyncLLMClient:
             response_schema_name=schema_name,
             response_schema_description=schema_description,
         )
+        text = response_text(response)
         if schema_model is not None:
-            parsed_model = schema_model.model_validate_json(response.text)
-            if getattr(schema_model, "__pydantic_root_model__", False):
+            parsed_model = _validate_schema_response(schema_model, text)
+            if _is_root_model_type(schema_model):
                 return parsed_model.root, response
             return parsed_model.model_dump(), response
         if expect == "array":
-            return extract_json_array(response.text), response
-        return extract_json_object(response.text), response
+            return extract_json_array(text), response
+        return extract_json_object(text), response
 
     def _build_client(self, client_cls):
         base_url = self.base_url
@@ -218,55 +239,13 @@ class AsyncLLMClient:
         request: ChatRequest,
         options: ChatOptions,
     ) -> ChatResponse:
-        if self.provider_name != "openai_resp":
-            return await client.achat(self.model_name, request, options)
-        return await self._collect_stream_response(client, request, options)
-
-    async def _collect_stream_response(
-        self,
-        client: Client,
-        request: ChatRequest,
-        options: ChatOptions,
-    ) -> ChatResponse:
-        texts: list[str] = []
-        tool_calls: list[ToolCall] = []
-        end_event = None
-
-        stream = await client.astream_chat(self.model_name, request, options)
-        async for event in stream:
-            if event.kind == "chunk" and event.content:
-                texts.append(event.content)
-            elif event.kind == "tool_call_chunk" and event.tool_call is not None:
-                tool_calls.append(event.tool_call)
-            elif event.kind == "end" and event.end is not None:
-                end_event = event.end
-
-        if end_event is not None:
-            final_texts = list(end_event.captured_texts or [])
-            if not final_texts and end_event.captured_first_text:
-                final_texts = [end_event.captured_first_text]
-            final_tool_calls = list(end_event.captured_tool_calls or tool_calls)
-            usage = end_event.captured_usage or Usage()
-            text = end_event.captured_first_text
-            if text is None and final_texts:
-                text = final_texts[0]
-        else:
-            final_texts = ["".join(texts)] if texts else []
-            final_tool_calls = tool_calls
-            usage = Usage()
-            text = final_texts[0] if final_texts else None
-
-        return ChatResponse(
-            text=text,
-            texts=final_texts,
-            reasoning_content=None,
-            model_adapter_kind=self.provider_name,
-            model_name=self.model_name,
-            provider_model_adapter_kind=self.provider_name,
-            provider_model_name=self.model_name,
-            usage=usage,
-            tool_calls=final_tool_calls,
-        )
+        # openai_resp backends that require `stream=true` (e.g. our local
+        # gateway) reject `exec_chat`. genai-pyo3's `achat_via_stream`
+        # streams internally and hands back a fully-collected ChatResponse,
+        # so callers never see chunk events.
+        if self.provider_name == "openai_resp":
+            return await client.achat_via_stream(self.model_name, request, options)
+        return await client.achat(self.model_name, request, options)
 
     async def _with_rate_limit_retries(self, op) -> ChatResponse:
         attempt = 0

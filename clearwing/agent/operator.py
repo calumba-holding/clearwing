@@ -9,6 +9,7 @@ agent to completion, and only escalates to the real user when:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -17,7 +18,6 @@ from dataclasses import dataclass, field
 
 from clearwing.agent.graph import _create_llm, create_agent
 from clearwing.agent.runtime import Command
-from clearwing.llm import HumanMessage, SystemMessage
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +119,10 @@ class OperatorAgent:
         self._escalated = False
 
     def run(self) -> OperatorResult:
+        """Run the operator loop to completion (sync wrapper over :meth:`arun`)."""
+        return asyncio.run(self.arun())
+
+    async def arun(self) -> OperatorResult:
         """Run the operator loop to completion."""
         start = time.time()
         session_id = uuid.uuid4().hex[:8]
@@ -143,7 +147,7 @@ class OperatorAgent:
         # Build initial goal message
         goal_text = self._format_goals()
         initial_input = {
-            "messages": [HumanMessage(content=goal_text)],
+            "messages": [{"role": "user", "content": goal_text}],
             "target": self.config.target,
             "open_ports": [],
             "services": [],
@@ -190,7 +194,7 @@ class OperatorAgent:
 
                 # Run one turn of the inner agent
                 self._turns += 1
-                agent_response = self._run_inner_turn(graph, config, input_msg)
+                agent_response = await self._arun_inner_turn(graph, config, input_msg)
 
                 if not agent_response:
                     # Agent produced no output — might be done
@@ -202,7 +206,7 @@ class OperatorAgent:
                 # Handle interrupts (approval requests)
                 state = graph.get_state(config)
                 if state.next:
-                    handled = self._handle_interrupt(state, graph, config)
+                    handled = await self._ahandle_interrupt(state, graph, config)
                     if not handled:
                         # Needs user escalation for approval
                         return self._build_result(
@@ -217,7 +221,7 @@ class OperatorAgent:
                     continue
 
                 # Ask the operator LLM what to do next
-                decision = self._decide_next(operator_llm, agent_response)
+                decision = await self._adecide_next(operator_llm, agent_response)
 
                 if decision.startswith("GOALS_COMPLETE"):
                     return self._build_result(graph, config, start, "completed")
@@ -228,7 +232,7 @@ class OperatorAgent:
                     if self.config.on_escalate:
                         answer = self.config.on_escalate(question)
                         if answer:
-                            input_msg = {"messages": [HumanMessage(content=answer)]}
+                            input_msg = {"messages": [{"role": "user", "content": answer}]}
                             continue
 
                     return self._build_result(
@@ -241,7 +245,7 @@ class OperatorAgent:
 
                 # Feed the operator's decision back as a HumanMessage
                 self._emit("operator", decision)
-                input_msg = {"messages": [HumanMessage(content=decision)]}
+                input_msg = {"messages": [{"role": "user", "content": decision}]}
 
             # Exhausted max turns
             return self._build_result(
@@ -268,11 +272,11 @@ class OperatorAgent:
             f"If you need information you cannot obtain yourself, ask clearly."
         )
 
-    def _run_inner_turn(self, graph, config: dict, input_msg: dict) -> str:
+    async def _arun_inner_turn(self, graph, config: dict, input_msg: dict) -> str:
         """Run one turn of the inner ReAct agent and extract its response text."""
         last_ai_content = ""
         try:
-            for event in graph.stream(input_msg, config, stream_mode="values"):
+            async for event in graph.astream(input_msg, config, stream_mode="values"):
                 msgs = event.get("messages", [])
                 if msgs:
                     last = msgs[-1]
@@ -293,7 +297,7 @@ class OperatorAgent:
 
         return last_ai_content
 
-    def _handle_interrupt(self, state, graph, config: dict) -> bool:
+    async def _ahandle_interrupt(self, state, graph, config: dict) -> bool:
         """Handle an interrupt (approval request) from the inner agent.
 
         Returns True if handled, False if needs user escalation.
@@ -316,12 +320,12 @@ class OperatorAgent:
                     for kw in ["scan", "detect", "enumerate", "fingerprint", "nmap"]
                 )
                 if is_scan and self.config.auto_approve_scans:
-                    graph.invoke(Command(resume=True), config)
+                    await graph.ainvoke(Command(resume=True), config)
                     self._progress.append(f"Auto-approved scan: {prompt[:100]}")
                     return True
 
                 if self.config.auto_approve_exploits:
-                    graph.invoke(Command(resume=True), config)
+                    await graph.ainvoke(Command(resume=True), config)
                     self._progress.append(f"Auto-approved exploit: {prompt[:100]}")
                     return True
 
@@ -330,7 +334,7 @@ class OperatorAgent:
 
         return True
 
-    def _decide_next(self, operator_llm, agent_response: str) -> str:
+    async def _adecide_next(self, operator_llm, agent_response: str) -> str:
         """Ask the operator LLM what instruction to give the inner agent next."""
         progress_text = "\n".join(self._progress[-20:]) if self._progress else "No progress yet."
         goals_text = "\n".join(f"  {i + 1}. {g}" for i, g in enumerate(self.config.goals))
@@ -342,20 +346,21 @@ class OperatorAgent:
         )
 
         messages = [
-            SystemMessage(content=system),
-            HumanMessage(
-                content=(
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": (
                     f"The inner agent just responded:\n\n{agent_response[:3000]}\n\n"
                     f"What should I tell the agent to do next? "
                     f"Reply with GOALS_COMPLETE if all goals are done, "
                     f"ESCALATE: <question> if you need to ask the real user, "
                     f"or give the next instruction."
-                )
-            ),
+                ),
+            },
         ]
 
         try:
-            response = operator_llm.invoke(messages)
+            response = await operator_llm.ainvoke(messages)
             content = response.content
             if isinstance(content, list):
                 content = "\n".join(

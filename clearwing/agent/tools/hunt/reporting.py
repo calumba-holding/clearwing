@@ -32,6 +32,7 @@ def build_reporting_tools(ctx: HunterContext) -> list:
         poc: str = "",
         confidence: str = "medium",
         evidence_level: str = "suspicion",
+        **_: object,
     ) -> str:
         """Record a finding into the hunter's state.
 

@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from genai_pyo3 import ChatResponse
 
 from clearwing.sourcehunt.pool import assign_tier
 from clearwing.sourcehunt.preprocessor import Preprocessor
@@ -65,11 +66,11 @@ def _ranker_response(files: list[str]) -> str:
     return json.dumps(entries)
 
 
-def _make_ranker_llm(file_paths: list[str]) -> MagicMock:
-    llm = MagicMock()
-    response = MagicMock()
-    response.content = _ranker_response(file_paths)
-    llm.invoke.return_value = response
+def _make_ranker_llm(file_paths: list[str]) -> AsyncMock:
+    """Ranker LLM that responds via aask_json with a {results: [...]} payload."""
+    llm = AsyncMock()
+    entries = json.loads(_ranker_response(file_paths))
+    llm.aask_json.return_value = ({"results": entries}, ChatResponse())
     return llm
 
 
@@ -85,21 +86,25 @@ def _make_hunter_llm() -> MagicMock:
     return llm
 
 
-def _make_verifier_llm() -> MagicMock:
-    llm = MagicMock()
-    response = MagicMock()
-    response.content = json.dumps(
-        {
-            "is_real": True,
-            "severity": "high",
-            "evidence_level": "static_corroboration",
-            "pro_argument": "regex matched",
-            "counter_argument": "",
-            "tie_breaker": "static analysis hit",
-            "duplicate_cve": None,
-        }
+def _make_verifier_llm() -> AsyncMock:
+    llm = AsyncMock()
+    llm.aask_text.return_value = ChatResponse(
+        content=[
+            {
+                "text": json.dumps(
+                    {
+                        "is_real": True,
+                        "severity": "high",
+                        "evidence_level": "static_corroboration",
+                        "pro_argument": "regex matched",
+                        "counter_argument": "",
+                        "tie_breaker": "static analysis hit",
+                        "duplicate_cve": None,
+                    }
+                )
+            }
+        ]
     )
-    llm.invoke.return_value = response
     return llm
 
 
@@ -375,14 +380,14 @@ class TestAdversarialVerifierDefault:
         runner.run()
         # Find the call whose system prompt contains STEEL-MAN
         found_adversarial = False
-        for call in verifier_llm.invoke.call_args_list:
-            msgs = call[0][0]
-            if msgs and hasattr(msgs[0], "content") and "STEEL-MAN" in msgs[0].content:
+        for call in verifier_llm.aask_text.call_args_list:
+            system_prompt = call.kwargs.get("system", "")
+            if "STEEL-MAN" in system_prompt:
                 found_adversarial = True
                 break
         assert found_adversarial, (
             "Expected at least one verifier LLM call to use the adversarial "
-            f"(STEEL-MAN) system prompt; got {len(verifier_llm.invoke.call_args_list)} calls"
+            f"(STEEL-MAN) system prompt; got {len(verifier_llm.aask_text.call_args_list)} calls"
         )
 
 

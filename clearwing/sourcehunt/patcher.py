@@ -25,7 +25,6 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from clearwing.llm import AsyncLLMClient
-from clearwing.llm.compat import invoke_text_compat
 
 from .state import EVIDENCE_LEVELS, EvidenceLevel, Finding, evidence_at_or_above
 
@@ -98,7 +97,7 @@ class AutoPatcher:
             self.PATCH_GATE,
         )
 
-    def attempt(
+    async def aattempt(
         self,
         finding: Finding,
         file_content: str = "",
@@ -128,10 +127,10 @@ class AutoPatcher:
                 ),
             )
 
-        # 1. Ask the LLM for a patch
         user_msg = self._build_user_message(finding, file_content)
         try:
-            content = invoke_text_compat(self.llm, system=PATCHER_SYSTEM_PROMPT, user=user_msg)
+            response = await self.llm.aask_text(system=PATCHER_SYSTEM_PROMPT, user=user_msg)
+            content = response.first_text() or ""
         except Exception as e:
             logger.warning("Patcher LLM call failed", exc_info=True)
             return PatchAttempt(
@@ -164,16 +163,13 @@ class AutoPatcher:
         explanation = parsed.get("explanation", "")
         confidence = (parsed.get("confidence") or "low").lower()
 
-        # 2. Validate via sandbox, if provided
         validated = False
         notes = "llm-only — no sandbox, not validated"
         if sandbox is not None and rerun_poc is not None:
             try:
-                # Drop the diff into /scratch so the hunter/reviewer can see it
                 sandbox.write_file("/scratch/auto_patch.diff", diff.encode("utf-8"))
                 still_crashes = bool(rerun_poc(sandbox, finding))
                 if still_crashes:
-                    validated = False
                     notes = "rejected — crash reproduces with the patch applied"
                 else:
                     validated = True

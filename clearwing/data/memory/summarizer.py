@@ -5,8 +5,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from clearwing.llm import HumanMessage, SystemMessage
-
 # Patterns that indicate a captured flag — these messages must never be dropped.
 _FLAG_PATTERNS = re.compile(
     r"(flag\{[^}]*\}|FLAG\{[^}]*\}|HTB\{[^}]*\}|CTF\{[^}]*\})", re.IGNORECASE
@@ -73,7 +71,7 @@ class ContextSummarizer:
         )
 
         summary_input = [
-            HumanMessage(content=f"{_SUMMARIZE_PROMPT}\n\n---\n\n{text_block}"),
+            {"role": "user", "content": f"{_SUMMARIZE_PROMPT}\n\n---\n\n{text_block}"},
         ]
 
         summary_response = await llm.ainvoke(summary_input)
@@ -81,7 +79,7 @@ class ContextSummarizer:
 
         # Reconstruct the message list.
         result: list = [
-            SystemMessage(content=f"[Session Summary]\n{summary_text}"),
+            {"role": "system", "content": f"[Session Summary]\n{summary_text}"},
         ]
         result.extend(flag_messages)
         result.extend(recent_messages)

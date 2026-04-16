@@ -107,6 +107,68 @@ clearwing ci --config .clearwing.ci.yaml --sarif results.sarif
 See [`docs/quickstart.md`](docs/quickstart.md) for a fuller walkthrough
 including credentials, session resume, and mission-mode operation.
 
+## Running sourcehunt on a local repo (FFmpeg example)
+
+The `clearwing sourcehunt <url>` CLI clones a remote URL. To hunt an
+already-cloned tree (e.g. FFmpeg) with the native-async pipeline and a
+self-hosted OpenAI-compatible backend, drive `SourceHuntRunner` directly:
+
+```bash
+# 1. Clone the target once
+git clone https://github.com/FFmpeg/FFmpeg.git
+
+# 2. Run sourcehunt against the local checkout
+uv run python -u - <<'PY'
+import logging
+from clearwing.llm.native import AsyncLLMClient
+from clearwing.sourcehunt.runner import SourceHuntRunner
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+
+REPO = './FFmpeg'
+RUN_DIR = './sourcehunt-results-ffmpeg'
+COMMON = dict(
+    provider_name='openai_resp',            # or 'openai' for /v1/chat/completions
+    api_key='YOUR_KEY',
+    base_url='http://localhost:8183/v1',    # any OpenAI-compatible endpoint
+    max_concurrency=15,
+)
+
+# One client per stage — routes each stage to a different model
+ranker_llm    = AsyncLLMClient(model_name='gpt-5.4-mini',  **COMMON)
+hunter_llm    = AsyncLLMClient(model_name='gpt-5.4',       **COMMON)
+verifier_llm  = AsyncLLMClient(model_name='gpt-5.4-mini',  **COMMON)
+exploiter_llm = AsyncLLMClient(model_name='gpt-5.3-codex', **COMMON)
+
+runner = SourceHuntRunner(
+    repo_url=REPO, local_path=REPO,
+    depth='standard',
+    budget_usd=1000.0,
+    max_parallel=15,
+    output_dir=RUN_DIR,
+    output_formats=['json', 'markdown'],
+    ranker_llm=ranker_llm,
+    hunter_llm=hunter_llm,
+    verifier_llm=verifier_llm,
+    exploiter_llm=exploiter_llm,
+    enable_patch_oracle=True,
+)
+
+print(runner.run())   # sync wrapper; internally drives SourceHuntRunner.arun()
+PY
+```
+
+Findings land in `./sourcehunt-results-ffmpeg/sh-<session-id>/` as JSON +
+markdown once the run completes. FFmpeg is ~10k source files, so expect the
+ranker to split into ~150 chunks and the tier-A hunter pool to run for hours.
+Redirect stdout/stderr to a file if you plan to detach the process — the
+runner's own artifacts are only written at the end.
+
+`AsyncLLMClient` accepts `provider_name` values `openai_resp` (the streaming
+`/v1/responses` shape) or `openai` (standard `/v1/chat/completions`); point
+`base_url` at any OpenAI-compatible server. See
+[`docs/providers.md`](docs/providers.md) for the managed-provider paths.
+
 ## Architecture at a glance
 
 ```

@@ -9,7 +9,9 @@ mocked sandbox so they run fast and don't need docker or gcc.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from genai_pyo3 import ChatResponse
 
 from clearwing.sandbox.container import ExecResult
 from clearwing.sourcehunt.harness_generator import (
@@ -53,11 +55,9 @@ def _ft(path: str, absolute_path: str, tags=None, surface=5, language="c") -> di
     }
 
 
-def _mock_llm(response_text: str) -> MagicMock:
-    llm = MagicMock()
-    resp = MagicMock()
-    resp.content = response_text
-    llm.invoke.return_value = resp
+def _mock_llm(response_text: str) -> AsyncMock:
+    llm = AsyncMock()
+    llm.aask_text.return_value = ChatResponse(content=[{"text": response_text}])
     return llm
 
 

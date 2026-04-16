@@ -4,7 +4,6 @@ import json
 from dataclasses import dataclass, field
 
 from clearwing.agent.graph import _create_llm
-from clearwing.llm import HumanMessage, SystemMessage
 
 
 @dataclass
@@ -80,8 +79,8 @@ class PlannerAgent:
 
     def create_plan(self, goal: str, context: str = "") -> Plan:
         messages = [
-            SystemMessage(content=PLANNER_PROMPT),
-            HumanMessage(content=f"Goal: {goal}\n\nContext:\n{context}"),
+            {"role": "system", "content": PLANNER_PROMPT},
+            {"role": "user", "content": f"Goal: {goal}\n\nContext:\n{context}"},
         ]
         response = self.llm.invoke(messages)
         content = response.content if isinstance(response.content, str) else str(response.content)
@@ -89,15 +88,16 @@ class PlannerAgent:
 
     def refine_plan(self, plan: Plan, feedback: str) -> Plan:
         messages = [
-            SystemMessage(content=PLANNER_PROMPT),
-            HumanMessage(
-                content=(
+            {"role": "system", "content": PLANNER_PROMPT},
+            {
+                "role": "user",
+                "content": (
                     f"Original goal: {plan.goal}\n\n"
                     f"Current plan status:\n{plan.summary()}\n\n"
                     f"Feedback/new findings: {feedback}\n\n"
                     "Revise the remaining subtasks and return the full updated list as JSON."
-                )
-            ),
+                ),
+            },
         ]
         response = self.llm.invoke(messages)
         content = response.content if isinstance(response.content, str) else str(response.content)

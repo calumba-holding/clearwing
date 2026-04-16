@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from clearwing.providers.genai_pyo3_chat import GenAIPyO3ChatModel
+from clearwing.llm import ChatModel
 from clearwing.providers.manager import (
     DEFAULT_ROUTES,
     PROVIDER_PRESETS,
@@ -144,7 +144,7 @@ class TestProviderManager:
         mgr = ProviderManager()
         llm = mgr.get_llm("default")
 
-        assert isinstance(llm, GenAIPyO3ChatModel)
+        assert isinstance(llm, ChatModel)
         assert llm.provider_name == "anthropic"
         assert llm.model_name == "claude-sonnet-4-6"
 
@@ -152,7 +152,7 @@ class TestProviderManager:
         mgr = ProviderManager()
         llm = mgr.get_llm("recon")
 
-        assert isinstance(llm, GenAIPyO3ChatModel)
+        assert isinstance(llm, ChatModel)
         assert llm.provider_name == "anthropic"
         assert llm.model_name == "claude-haiku-4-5-20251001"
 
@@ -160,7 +160,7 @@ class TestProviderManager:
         mgr = ProviderManager()
         llm = mgr.get_llm("nonexistent_task")
 
-        assert isinstance(llm, GenAIPyO3ChatModel)
+        assert isinstance(llm, ChatModel)
         assert llm.provider_name == "anthropic"
         assert llm.model_name == "claude-sonnet-4-6"
 
@@ -222,20 +222,20 @@ class TestCreateLlmErrors:
     def test_openai_provider_uses_native_chat_model(self):
         mgr = ProviderManager()
         llm = mgr._create_llm("openai", "gpt-4o")
-        assert isinstance(llm, GenAIPyO3ChatModel)
+        assert isinstance(llm, ChatModel)
         assert llm.provider_name == "openai"
         assert llm.model_name == "gpt-4o"
 
     def test_google_provider_uses_native_chat_model(self):
         mgr = ProviderManager()
         llm = mgr._create_llm("google", "gemini-2.0-flash")
-        assert isinstance(llm, GenAIPyO3ChatModel)
+        assert isinstance(llm, ChatModel)
         assert llm.provider_name == "gemini"
         assert llm.model_name == "gemini-2.0-flash"
 
     def test_ollama_provider_uses_native_chat_model(self):
         mgr = ProviderManager()
         llm = mgr._create_llm("ollama", "llama3")
-        assert isinstance(llm, GenAIPyO3ChatModel)
+        assert isinstance(llm, ChatModel)
         assert llm.provider_name == "ollama"
         assert llm.base_url == "http://localhost:11434"

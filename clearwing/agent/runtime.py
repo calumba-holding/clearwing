@@ -150,21 +150,25 @@ class NativeAgentGraph:
             except Exception:
                 logger.warning("Failed to initialize KnowledgeGraph", exc_info=True)
 
-    def stream(
+    async def astream(
         self, input_data: dict[str, Any] | Command, config: dict, stream_mode: str = "values"
     ):
         del stream_mode
         thread_id = self._thread_id(config)
         if isinstance(input_data, Command):
-            yield from self._resume(thread_id, input_data.resume)
+            async for event in self._aresume(thread_id, input_data.resume):
+                yield event
             return
 
         state = self._get_or_create_state(thread_id)
         self._merge_input(state, input_data)
-        yield from self._run_loop(thread_id)
+        async for event in self._arun_loop(thread_id):
+            yield event
 
-    def invoke(self, input_data: dict[str, Any] | Command, config: dict) -> GraphStateSnapshot:
-        for _ in self.stream(input_data, config):
+    async def ainvoke(
+        self, input_data: dict[str, Any] | Command, config: dict
+    ) -> GraphStateSnapshot:
+        async for _ in self.astream(input_data, config):
             pass
         return self.get_state(config)
 
@@ -180,47 +184,50 @@ class NativeAgentGraph:
             tasks=[GraphTask(interrupts=[GraphInterrupt(value=pending.prompt)])],
         )
 
-    def _resume(self, thread_id: str, approved: bool):
+    async def _aresume(self, thread_id: str, approved: bool):
         pending = self._pending.get(thread_id)
         if pending is None:
             return
         self._pending[thread_id] = None
         state = self._get_or_create_state(thread_id)
-        tool_events, paused = self._run_tool_calls(
+        tool_events, paused = await self._arun_tool_calls(
             state, pending.tool_calls, resume_decision=approved
         )
-        yield from tool_events
+        for event in tool_events:
+            yield event
         if paused:
             return
-        yield from self._run_loop(thread_id)
+        async for event in self._arun_loop(thread_id):
+            yield event
 
-    def _run_loop(self, thread_id: str):
+    async def _arun_loop(self, thread_id: str):
         state = self._get_or_create_state(thread_id)
         while True:
-            assistant_event = self._assistant_step(state)
+            assistant_event = await self._aassistant_step(state)
             yield assistant_event
             last = state["messages"][-1]
             tool_calls = getattr(last, "tool_calls", []) or []
             if not tool_calls:
                 break
-            tool_events, paused = self._run_tool_calls(state, tool_calls, resume_decision=Ellipsis)
-            yield from tool_events
+            tool_events, paused = await self._arun_tool_calls(
+                state, tool_calls, resume_decision=Ellipsis
+            )
+            for event in tool_events:
+                yield event
             if paused:
                 break
 
-    def _assistant_step(self, state: dict[str, Any]) -> dict[str, Any]:
+    async def _aassistant_step(self, state: dict[str, Any]) -> dict[str, Any]:
         messages = list(state.get("messages", []))
         if self.context_summarizer and self.context_summarizer.should_summarize(messages):
             try:
-                messages = asyncio.run(
-                    self.context_summarizer.summarize(messages, self.llm_with_tools)
-                )
+                messages = await self.context_summarizer.summarize(messages, self.llm_with_tools)
             except Exception:
                 logger.debug("Context summarization failed", exc_info=True)
 
         sys_prompt = self.system_prompt_fn(state)
         full_messages: list[BaseMessage] = [SystemMessage(content=sys_prompt), *messages]
-        response = self.llm_with_tools.invoke(full_messages)
+        response = await self.llm_with_tools.ainvoke(full_messages)
         state.setdefault("messages", []).append(response)
 
         usage = getattr(response, "response_metadata", {}).get("usage", {})
@@ -253,7 +260,7 @@ class NativeAgentGraph:
 
         return dict(state)
 
-    def _run_tool_calls(
+    async def _arun_tool_calls(
         self,
         state: dict[str, Any],
         tool_calls: list[dict[str, Any]],
@@ -281,7 +288,7 @@ class NativeAgentGraph:
                 content = json.dumps({"error": f"unknown tool: {tool_name}"})
             else:
                 try:
-                    content = self._invoke_tool(tool, tool_args, resume_decision)
+                    content = await self._ainvoke_tool(tool, tool_args, resume_decision)
                 except InterruptRequest as exc:
                     self._pending[self._find_thread_id_for_state(state)] = _PendingToolResume(
                         tool_calls=tool_calls[index:],
@@ -361,16 +368,13 @@ class NativeAgentGraph:
         events.append(dict(state))
         return events, False
 
-    def _invoke_tool(
+    async def _ainvoke_tool(
         self, tool: AgentTool, arguments: dict[str, Any], resume_decision: object
     ) -> Any:
-        async def runner() -> Any:
-            with tool_execution_context(resume_decision=resume_decision):
-                if asyncio.iscoroutinefunction(tool.func):
-                    return await tool.func(**arguments)
-                return await asyncio.to_thread(tool.func, **arguments)
-
-        return asyncio.run(runner())
+        with tool_execution_context(resume_decision=resume_decision):
+            if asyncio.iscoroutinefunction(tool.func):
+                return await tool.func(**arguments)
+            return await asyncio.to_thread(tool.func, **arguments)
 
     def _merge_input(self, state: dict[str, Any], input_data: dict[str, Any]) -> None:
         for key, value in input_data.items():

@@ -8,7 +8,6 @@ from typing import Any
 from clearwing.llm import AsyncLLMClient, ChatModel
 
 from .env import LLMEndpoint, resolve_llm_endpoint
-from .genai_pyo3_chat import GenAIPyO3ChatModel
 
 logger = logging.getLogger(__name__)
 
@@ -301,7 +300,7 @@ class ProviderManager:
     def _create_llm_from_endpoint(self, endpoint: LLMEndpoint) -> ChatModel:
         """Build a native ChatModel from a resolved LLMEndpoint."""
         if endpoint.is_openai_compat:
-            return GenAIPyO3ChatModel(
+            return ChatModel(
                 model_name=endpoint.model,
                 base_url=endpoint.base_url,
                 api_key=endpoint.api_key or "",
@@ -309,7 +308,7 @@ class ProviderManager:
             )
 
         # Anthropic direct (the default fallback path)
-        return GenAIPyO3ChatModel(
+        return ChatModel(
             model_name=endpoint.model,
             api_key=endpoint.api_key or "",
             provider_name=_adapter_for_endpoint(endpoint),
@@ -355,14 +354,14 @@ class ProviderManager:
         preset = PROVIDER_PRESETS.get(provider)
 
         if provider == "anthropic":
-            return GenAIPyO3ChatModel(
+            return ChatModel(
                 model_name=model,
                 api_key=config.api_key if config else "",
                 provider_name="anthropic",
             )
 
         elif provider == "openai":
-            return GenAIPyO3ChatModel(
+            return ChatModel(
                 model_name=model,
                 base_url=config.base_url if config else None,
                 api_key=config.api_key if config else "",
@@ -370,7 +369,7 @@ class ProviderManager:
             )
 
         elif provider == "google":
-            return GenAIPyO3ChatModel(
+            return ChatModel(
                 model_name=model,
                 api_key=config.api_key if config else "",
                 provider_name="gemini",
@@ -382,7 +381,7 @@ class ProviderManager:
                 if config and config.base_url
                 else preset.get("default_base_url", "http://localhost:11434")
             )
-            return GenAIPyO3ChatModel(
+            return ChatModel(
                 model_name=model,
                 base_url=base_url,
                 api_key=config.api_key if config else "",
@@ -391,7 +390,7 @@ class ProviderManager:
 
         else:
             if config and config.base_url:
-                return GenAIPyO3ChatModel(
+                return ChatModel(
                     model_name=model,
                     base_url=config.base_url,
                     api_key=config.api_key,

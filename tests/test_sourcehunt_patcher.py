@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+
+from genai_pyo3 import ChatResponse
 
 from clearwing.sourcehunt.patcher import (
     AutoPatcher,
@@ -12,12 +15,14 @@ from clearwing.sourcehunt.patcher import (
 )
 
 
-def _mock_llm(payload: dict) -> MagicMock:
-    llm = MagicMock()
-    response = MagicMock()
-    response.content = json.dumps(payload)
-    llm.invoke.return_value = response
+def _mock_llm(payload: dict) -> AsyncMock:
+    llm = AsyncMock()
+    llm.aask_text.return_value = ChatResponse(content=[{"text": json.dumps(payload)}])
     return llm
+
+
+def _run(coro):
+    return asyncio.run(coro)
 
 
 def _make_finding(**kwargs) -> dict:
@@ -80,7 +85,7 @@ class TestAttemptLLMPath:
             }
         )
         patcher = AutoPatcher(llm)
-        attempt = patcher.attempt(_make_finding(), file_content="int f() {}")
+        attempt = _run(patcher.aattempt(_make_finding(), file_content="int f() {}"))
         assert attempt.attempted is True
         assert attempt.validated is False  # no sandbox → not validated
         assert "min(len" in attempt.diff
@@ -89,33 +94,31 @@ class TestAttemptLLMPath:
         assert "llm-only" in attempt.notes
 
     def test_invalid_json_returns_unvalidated(self):
-        llm = MagicMock()
-        resp = MagicMock()
-        resp.content = "I cannot help with this"
-        llm.invoke.return_value = resp
+        llm = AsyncMock()
+        llm.aask_text.return_value = ChatResponse(content=[{"text": "I cannot help with this"}])
         patcher = AutoPatcher(llm)
-        attempt = patcher.attempt(_make_finding())
+        attempt = _run(patcher.aattempt(_make_finding()))
         assert attempt.attempted is True
         assert attempt.validated is False
         assert "no JSON" in attempt.notes
 
     def test_llm_exception_returns_error_attempt(self):
-        llm = MagicMock()
-        llm.invoke.side_effect = Exception("rate limited")
+        llm = AsyncMock()
+        llm.aask_text.side_effect = Exception("rate limited")
         patcher = AutoPatcher(llm)
-        attempt = patcher.attempt(_make_finding())
+        attempt = _run(patcher.aattempt(_make_finding()))
         assert attempt.attempted is True
         assert attempt.validated is False
         assert "rate limited" in attempt.notes
 
     def test_ineligible_not_attempted(self):
-        llm = MagicMock()
+        llm = AsyncMock()
         patcher = AutoPatcher(llm)
-        attempt = patcher.attempt(_make_finding(verified=False))
+        attempt = _run(patcher.aattempt(_make_finding(verified=False)))
         assert attempt.attempted is False
         assert "Skipped" in attempt.notes
         # LLM was not called
-        assert llm.invoke.call_count == 0
+        assert llm.aask_text.call_count == 0
 
 
 # --- Sandbox validation path -----------------------------------------------
@@ -134,11 +137,13 @@ class TestAttemptSandboxPath:
         patcher = AutoPatcher(llm)
         fake_sandbox = MagicMock()
         fake_sandbox.write_file = MagicMock()
-        attempt = patcher.attempt(
-            _make_finding(),
-            file_content="",
-            sandbox=fake_sandbox,
-            rerun_poc=lambda sb, f: False,  # crash gone
+        attempt = _run(
+            patcher.aattempt(
+                _make_finding(),
+                file_content="",
+                sandbox=fake_sandbox,
+                rerun_poc=lambda sb, f: False,  # crash gone
+            )
         )
         assert attempt.validated is True
         assert "validated" in attempt.notes
@@ -155,11 +160,13 @@ class TestAttemptSandboxPath:
         patcher = AutoPatcher(llm)
         fake_sandbox = MagicMock()
         fake_sandbox.write_file = MagicMock()
-        attempt = patcher.attempt(
-            _make_finding(),
-            file_content="",
-            sandbox=fake_sandbox,
-            rerun_poc=lambda sb, f: True,  # crash still happens
+        attempt = _run(
+            patcher.aattempt(
+                _make_finding(),
+                file_content="",
+                sandbox=fake_sandbox,
+                rerun_poc=lambda sb, f: True,  # crash still happens
+            )
         )
         assert attempt.validated is False
         assert "rejected" in attempt.notes
@@ -181,11 +188,13 @@ class TestAttemptSandboxPath:
         def boom(sb, f):
             raise RuntimeError("sandbox exploded")
 
-        attempt = patcher.attempt(
-            _make_finding(),
-            file_content="",
-            sandbox=fake_sandbox,
-            rerun_poc=boom,
+        attempt = _run(
+            patcher.aattempt(
+                _make_finding(),
+                file_content="",
+                sandbox=fake_sandbox,
+                rerun_poc=boom,
+            )
         )
         assert attempt.validated is False
         assert "validation error" in attempt.notes

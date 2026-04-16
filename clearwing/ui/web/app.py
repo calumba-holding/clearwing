@@ -16,7 +16,6 @@ from clearwing.agent.graph import create_agent
 from clearwing.agent.operator import OperatorAgent, OperatorConfig
 from clearwing.agent.runtime import Command
 from clearwing.core.events import EventBus, EventType
-from clearwing.llm import HumanMessage
 from clearwing.observability import MetricsCollector
 
 logger = logging.getLogger(__name__)
@@ -162,8 +161,7 @@ def create_app():
                     auto_approve_exploits=request_body.get("auto_approve_exploits", False),
                 )
                 operator = OperatorAgent(config)
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(None, operator.run)
+                result = await operator.arun()
                 _sessions[session_id]["status"] = result.status
                 _sessions[session_id]["result"] = {
                     "status": result.status,
@@ -306,14 +304,11 @@ def create_app():
 
                 elif msg_type == "message" and graph and config:
                     content = data.get("content", "")
-                    input_msg = {"messages": [HumanMessage(content=content)]}
+                    input_msg = {"messages": [{"role": "user", "content": content}]}
 
-                    # Run agent in thread pool to avoid blocking
-                    loop = asyncio.get_event_loop()
-
-                    def run_agent(graph=graph, input_msg=input_msg, config=config):  # noqa: B023
+                    try:
                         last_content = ""
-                        for event in graph.stream(input_msg, config, stream_mode="values"):
+                        async for event in graph.astream(input_msg, config, stream_mode="values"):
                             msgs = event.get("messages", [])
                             if msgs:
                                 last = msgs[-1]
@@ -327,15 +322,11 @@ def create_app():
                                         )
                                     if c:
                                         last_content = c
-                        return last_content
-
-                    try:
-                        result = await loop.run_in_executor(None, run_agent)
-                        if result:
+                        if last_content:
                             await websocket.send_json(
                                 {
                                     "type": "agent_message",
-                                    "data": {"content": result},
+                                    "data": {"content": last_content},
                                 }
                             )
                     except Exception as e:
@@ -349,13 +340,7 @@ def create_app():
                 elif msg_type == "approve" and graph and config:
                     approved = data.get("approved", False)
                     try:
-                        loop = asyncio.get_event_loop()
-                        await loop.run_in_executor(
-                            None,
-                            lambda g=graph, a=approved, c=config: g.invoke(  # noqa: B023
-                                Command(resume=a), c
-                            ),
-                        )
+                        await graph.ainvoke(Command(resume=approved), config)
                     except Exception as e:
                         await websocket.send_json(
                             {

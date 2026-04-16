@@ -23,7 +23,6 @@ from itertools import islice
 from typing import Any, cast
 
 from clearwing.llm import AsyncLLMClient
-from clearwing.llm.compat import invoke_text_compat
 
 from .state import EVIDENCE_LEVELS, EvidenceLevel, Finding, evidence_at_or_above
 
@@ -187,7 +186,7 @@ class Verifier:
             gated = False
         return VERIFIER_SYSTEM_PROMPT_V02 if gated else VERIFIER_SYSTEM_PROMPT_V01
 
-    def verify(
+    async def averify(
         self,
         finding: Finding,
         file_content: str = "",
@@ -197,18 +196,12 @@ class Verifier:
         The verifier sees ONLY the finding dict and (optionally) the file
         content. It does NOT see the hunter's message history — that's the
         independence guarantee.
-
-        Args:
-            finding: The hunter's Finding.
-            file_content: Optional content of the file the finding lives in.
-
-        Returns:
-            A VerifierResult with the structured verdict.
         """
         user_msg = self._build_user_message(finding, file_content)
         system_prompt = self._prompt_for_finding(finding)
         try:
-            content = invoke_text_compat(self.llm, system=system_prompt, user=user_msg)
+            response = await self.llm.aask_text(system=system_prompt, user=user_msg)
+            content = response.first_text() or ""
         except Exception as e:
             logger.warning("Verifier LLM call failed", exc_info=True)
             return VerifierResult(
@@ -373,7 +366,7 @@ class Verifier:
 
     # --- v0.3 patch oracle -------------------------------------------------
 
-    def run_patch_oracle(
+    async def arun_patch_oracle(
         self,
         finding: Finding,
         file_content: str,
@@ -400,7 +393,8 @@ class Verifier:
         """
         user_msg = self._build_patch_oracle_message(finding, file_content)
         try:
-            content = invoke_text_compat(self.llm, system=PATCH_ORACLE_PROMPT, user=user_msg)
+            response = await self.llm.aask_text(system=PATCH_ORACLE_PROMPT, user=user_msg)
+            content = response.first_text() or ""
         except Exception as e:
             logger.debug("Patch-oracle LLM call failed", exc_info=True)
             return False, "", f"llm error: {e}"
@@ -413,21 +407,15 @@ class Verifier:
         confidence = parsed.get("confidence", "low").lower()
         description = parsed.get("fix_description", "")
 
-        # If no sandbox, we can only return the LLM's self-reported confidence
         if sandbox is None or rerun_poc is None:
-            # High confidence is treated as "passed"; medium/low don't validate
             if confidence == "high":
                 return True, diff, f"llm-only oracle, confidence=high: {description}"
             return False, diff, f"llm-only oracle, confidence={confidence}: {description}"
 
-        # Sandbox path: apply the fix, re-run the PoC
         try:
-            # The runner is expected to have pre-loaded the sandbox with the
-            # original file. We write the patched file and run the PoC callback.
             file_path = finding.get("file", "")
             if not file_path:
                 return False, diff, "no file path in finding"
-            # Write the patch file into /scratch for reference (apply is caller's job)
             sandbox.write_file("/scratch/patch.diff", diff.encode("utf-8"))
             try:
                 still_crashes = bool(rerun_poc(sandbox, finding))

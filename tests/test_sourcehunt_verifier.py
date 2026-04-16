@@ -11,8 +11,12 @@ Critical assertions:
 
 from __future__ import annotations
 
+import asyncio
 import json
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
+from genai_pyo3 import ChatResponse
 
 from clearwing.sourcehunt.verifier import (
     VERIFIER_SYSTEM_PROMPT_V01,
@@ -23,20 +27,20 @@ from clearwing.sourcehunt.verifier import (
 )
 
 
-def _mock_llm_returning_json(payload: dict) -> MagicMock:
-    mock = MagicMock()
-    response = MagicMock()
-    response.content = json.dumps(payload)
-    mock.invoke.return_value = response
+def _mock_llm_returning_json(payload: dict) -> AsyncMock:
+    mock = AsyncMock()
+    mock.aask_text.return_value = ChatResponse(content=[{"text": json.dumps(payload)}])
     return mock
 
 
-def _mock_llm_raw(content: str) -> MagicMock:
-    mock = MagicMock()
-    response = MagicMock()
-    response.content = content
-    mock.invoke.return_value = response
+def _mock_llm_raw(content: str) -> AsyncMock:
+    mock = AsyncMock()
+    mock.aask_text.return_value = ChatResponse(content=[{"text": content}])
     return mock
+
+
+def _run(coro):
+    return asyncio.run(coro)
 
 
 def _make_finding(**kwargs) -> dict:
@@ -101,8 +105,8 @@ class TestAdversarialBudgetGate:
             }
         )
         v = Verifier(llm, adversarial=True)  # default threshold = static_corroboration
-        v.verify(_make_finding(evidence_level="suspicion"))
-        system_msg = llm.invoke.call_args[0][0][0]
+        _run(v.averify(_make_finding(evidence_level="suspicion")))
+        system_msg = SimpleNamespace(content=llm.aask_text.call_args.kwargs["system"])
         # Below the gate → V01 (no STEEL-MAN wording)
         assert "STEEL-MAN" not in system_msg.content
 
@@ -120,8 +124,8 @@ class TestAdversarialBudgetGate:
             }
         )
         v = Verifier(llm, adversarial=True)
-        v.verify(_make_finding(evidence_level="static_corroboration"))
-        system_msg = llm.invoke.call_args[0][0][0]
+        _run(v.averify(_make_finding(evidence_level="static_corroboration")))
+        system_msg = SimpleNamespace(content=llm.aask_text.call_args.kwargs["system"])
         assert "STEEL-MAN" in system_msg.content
 
     def test_crash_reproduced_uses_v02(self):
@@ -137,8 +141,8 @@ class TestAdversarialBudgetGate:
             }
         )
         v = Verifier(llm, adversarial=True)
-        v.verify(_make_finding(evidence_level="crash_reproduced"))
-        system_msg = llm.invoke.call_args[0][0][0]
+        _run(v.averify(_make_finding(evidence_level="crash_reproduced")))
+        system_msg = SimpleNamespace(content=llm.aask_text.call_args.kwargs["system"])
         assert "STEEL-MAN" in system_msg.content
 
     def test_custom_threshold_crash_reproduced(self):
@@ -156,8 +160,8 @@ class TestAdversarialBudgetGate:
             }
         )
         v = Verifier(llm, adversarial=True, adversarial_threshold="crash_reproduced")
-        v.verify(_make_finding(evidence_level="static_corroboration"))
-        system_msg = llm.invoke.call_args[0][0][0]
+        _run(v.averify(_make_finding(evidence_level="static_corroboration")))
+        system_msg = SimpleNamespace(content=llm.aask_text.call_args.kwargs["system"])
         # static_corroboration < crash_reproduced → V01
         assert "STEEL-MAN" not in system_msg.content
 
@@ -175,8 +179,8 @@ class TestAdversarialBudgetGate:
             }
         )
         v = Verifier(llm, adversarial=True, adversarial_threshold=None)
-        v.verify(_make_finding(evidence_level="suspicion"))
-        system_msg = llm.invoke.call_args[0][0][0]
+        _run(v.averify(_make_finding(evidence_level="suspicion")))
+        system_msg = SimpleNamespace(content=llm.aask_text.call_args.kwargs["system"])
         assert "STEEL-MAN" in system_msg.content
 
     def test_gate_does_nothing_when_adversarial_off(self):
@@ -193,8 +197,8 @@ class TestAdversarialBudgetGate:
             }
         )
         v = Verifier(llm, adversarial=False)
-        v.verify(_make_finding(evidence_level="patch_validated"))
-        system_msg = llm.invoke.call_args[0][0][0]
+        _run(v.averify(_make_finding(evidence_level="patch_validated")))
+        system_msg = SimpleNamespace(content=llm.aask_text.call_args.kwargs["system"])
         assert "STEEL-MAN" not in system_msg.content
 
     def test_missing_evidence_level_falls_back_below_gate(self):
@@ -212,27 +216,31 @@ class TestAdversarialBudgetGate:
         )
         v = Verifier(llm, adversarial=True)
         finding = {"id": "f", "file": "x.c"}  # no evidence_level
-        v.verify(finding)
-        system_msg = llm.invoke.call_args[0][0][0]
+        _run(v.averify(finding))
+        system_msg = SimpleNamespace(content=llm.aask_text.call_args.kwargs["system"])
         assert "STEEL-MAN" not in system_msg.content
 
     def test_mixed_batch_picks_per_finding(self):
         """Running verify() across a mixed batch picks the right prompt per call."""
-        llm = MagicMock()
+        llm = AsyncMock()
         # Response doesn't matter — we only care about which prompt was used
-        resp = MagicMock()
-        resp.content = json.dumps(
-            {
-                "is_real": True,
-                "severity": "high",
-                "evidence_level": "crash_reproduced",
-                "pro_argument": "p",
-                "counter_argument": "c",
-                "tie_breaker": "t",
-                "duplicate_cve": None,
-            }
+        llm.aask_text.return_value = ChatResponse(
+            content=[
+                {
+                    "text": json.dumps(
+                        {
+                            "is_real": True,
+                            "severity": "high",
+                            "evidence_level": "crash_reproduced",
+                            "pro_argument": "p",
+                            "counter_argument": "c",
+                            "tie_breaker": "t",
+                            "duplicate_cve": None,
+                        }
+                    )
+                }
+            ]
         )
-        llm.invoke.return_value = resp
 
         v = Verifier(llm, adversarial=True)
         findings = [
@@ -241,10 +249,10 @@ class TestAdversarialBudgetGate:
             _make_finding(id="high", evidence_level="crash_reproduced"),
         ]
         for f in findings:
-            v.verify(f)
+            _run(v.averify(f))
 
-        assert llm.invoke.call_count == 3
-        prompts = [call[0][0][0].content for call in llm.invoke.call_args_list]
+        assert llm.aask_text.call_count == 3
+        prompts = [call.kwargs["system"] for call in llm.aask_text.call_args_list]
         assert "STEEL-MAN" not in prompts[0]  # suspicion
         assert "STEEL-MAN" in prompts[1]  # static_corroboration
         assert "STEEL-MAN" in prompts[2]  # crash_reproduced
@@ -267,13 +275,12 @@ class TestIndependentContext:
         )
         v = Verifier(llm)
         finding = _make_finding()
-        v.verify(finding, file_content="int main() {}\n")
+        _run(v.averify(finding, file_content="int main() {}\n"))
 
         # Inspect what was passed to the LLM
-        call_args = llm.invoke.call_args[0][0]
-        # Should be exactly two messages: SystemMessage + HumanMessage
-        assert len(call_args) == 2
-        human_msg = call_args[1].content
+        call_kwargs = llm.aask_text.call_args.kwargs
+        assert "system" in call_kwargs and "user" in call_kwargs
+        human_msg = call_kwargs["user"]
         # The hunter's reasoning chain must NOT appear
         assert "hunter" not in human_msg.lower() or "discovered_by" in human_msg
         # But the finding metadata IS present
@@ -294,8 +301,8 @@ class TestIndependentContext:
         )
         v = Verifier(llm)
         finding = _make_finding()
-        v.verify(finding, file_content="#include <string.h>\nvoid bug() {}\n")
-        human_msg = llm.invoke.call_args[0][0][1].content
+        _run(v.averify(finding, file_content="#include <string.h>\nvoid bug() {}\n"))
+        human_msg = llm.aask_text.call_args.kwargs["user"]
         assert "<string.h>" in human_msg
 
     def test_file_content_is_capped(self):
@@ -313,8 +320,8 @@ class TestIndependentContext:
         v = Verifier(llm)
         finding = _make_finding()
         huge = "x" * 50000
-        v.verify(finding, file_content=huge)
-        human_msg = llm.invoke.call_args[0][0][1].content
+        _run(v.averify(finding, file_content=huge))
+        human_msg = llm.aask_text.call_args.kwargs["user"]
         # File content section is capped to 8KB
         assert "x" * 8001 not in human_msg
 
@@ -336,7 +343,7 @@ class TestResponseParsing:
             }
         )
         v = Verifier(llm)
-        result = v.verify(_make_finding())
+        result = _run(v.averify(_make_finding()))
         assert isinstance(result, VerifierResult)
         assert result.is_real is True
         assert result.severity_verified == "high"
@@ -357,7 +364,7 @@ class TestResponseParsing:
             }
         )
         v = Verifier(llm, adversarial=True)
-        result = v.verify(_make_finding())
+        result = _run(v.averify(_make_finding()))
         assert result.is_real is False
         assert result.severity_verified is None  # not_real → None
         assert "validates length" in result.counter_argument
@@ -376,7 +383,7 @@ class TestResponseParsing:
             }
         )
         v = Verifier(llm)
-        result = v.verify(_make_finding())
+        result = _run(v.averify(_make_finding()))
         # Verifier coerces invalid severity to None (caller decides what to do)
         assert result.severity_verified is None
 
@@ -393,27 +400,27 @@ class TestResponseParsing:
             }
         )
         v = Verifier(llm)
-        result = v.verify(_make_finding())
+        result = _run(v.averify(_make_finding()))
         assert result.evidence_level == "suspicion"
 
     def test_no_json_in_response(self):
         llm = _mock_llm_raw("I'm just a chatty model with no JSON")
         v = Verifier(llm)
-        result = v.verify(_make_finding())
+        result = _run(v.averify(_make_finding()))
         assert result.is_real is False
         assert "no JSON" in result.tie_breaker
 
     def test_invalid_json_in_response(self):
         llm = _mock_llm_raw("{ not valid json }")
         v = Verifier(llm)
-        result = v.verify(_make_finding())
+        result = _run(v.averify(_make_finding()))
         assert result.is_real is False
 
     def test_llm_exception_returns_error_result(self):
-        llm = MagicMock()
-        llm.invoke.side_effect = Exception("rate limited")
+        llm = AsyncMock()
+        llm.aask_text.side_effect = Exception("rate limited")
         v = Verifier(llm)
-        result = v.verify(_make_finding())
+        result = _run(v.averify(_make_finding()))
         assert result.is_real is False
         assert "rate limited" in result.tie_breaker
 
@@ -433,11 +440,13 @@ class TestPatchOracle:
             }
         )
         v = Verifier(llm)
-        passed, diff, notes = v.run_patch_oracle(
-            _make_finding(),
-            file_content="int f() { memcpy(buf, input, len); }",
-            sandbox=None,
-            rerun_poc=None,
+        passed, diff, notes = _run(
+            v.arun_patch_oracle(
+                _make_finding(),
+                file_content="int f() { memcpy(buf, input, len); }",
+                sandbox=None,
+                rerun_poc=None,
+            )
         )
         assert passed is True
         assert "memcpy" in diff
@@ -452,24 +461,26 @@ class TestPatchOracle:
             }
         )
         v = Verifier(llm)
-        passed, diff, notes = v.run_patch_oracle(
-            _make_finding(),
-            file_content="x",
+        passed, diff, notes = _run(
+            v.arun_patch_oracle(
+                _make_finding(),
+                file_content="x",
+            )
         )
         assert passed is False
 
     def test_no_json_returns_false(self):
         llm = _mock_llm_raw("I can't write a fix for this")
         v = Verifier(llm)
-        passed, diff, notes = v.run_patch_oracle(_make_finding(), file_content="")
+        passed, diff, notes = _run(v.arun_patch_oracle(_make_finding(), file_content=""))
         assert passed is False
         assert diff == ""
 
     def test_llm_exception_returns_false(self):
-        llm = MagicMock()
-        llm.invoke.side_effect = Exception("rate limited")
+        llm = AsyncMock()
+        llm.aask_text.side_effect = Exception("rate limited")
         v = Verifier(llm)
-        passed, diff, notes = v.run_patch_oracle(_make_finding(), file_content="")
+        passed, diff, notes = _run(v.arun_patch_oracle(_make_finding(), file_content=""))
         assert passed is False
         assert "rate limited" in notes
 
@@ -485,11 +496,13 @@ class TestPatchOracle:
         v = Verifier(llm)
         fake_sandbox = MagicMock()
         fake_sandbox.write_file = MagicMock()
-        passed, diff, notes = v.run_patch_oracle(
-            _make_finding(),
-            file_content="x",
-            sandbox=fake_sandbox,
-            rerun_poc=lambda sb, f: True,  # still crashes
+        passed, diff, notes = _run(
+            v.arun_patch_oracle(
+                _make_finding(),
+                file_content="x",
+                sandbox=fake_sandbox,
+                rerun_poc=lambda sb, f: True,  # still crashes
+            )
         )
         assert passed is False
         assert "crash survived" in notes
@@ -506,11 +519,13 @@ class TestPatchOracle:
         v = Verifier(llm)
         fake_sandbox = MagicMock()
         fake_sandbox.write_file = MagicMock()
-        passed, diff, notes = v.run_patch_oracle(
-            _make_finding(),
-            file_content="x",
-            sandbox=fake_sandbox,
-            rerun_poc=lambda sb, f: False,  # crash gone
+        passed, diff, notes = _run(
+            v.arun_patch_oracle(
+                _make_finding(),
+                file_content="x",
+                sandbox=fake_sandbox,
+                rerun_poc=lambda sb, f: False,  # crash gone
+            )
         )
         assert passed is True
         assert "eliminated crash" in notes

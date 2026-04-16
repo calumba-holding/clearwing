@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
+from genai_pyo3 import ChatResponse
 
 from clearwing.sourcehunt.mechanism_memory import (
     Mechanism,
@@ -407,12 +409,14 @@ class TestMechanismRecall:
 # --- Extractor --------------------------------------------------------------
 
 
-def _mock_llm(payload: dict) -> MagicMock:
-    llm = MagicMock()
-    response = MagicMock()
-    response.content = json.dumps(payload)
-    llm.invoke.return_value = response
+def _mock_llm(payload: dict) -> AsyncMock:
+    llm = AsyncMock()
+    llm.aask_text.return_value = ChatResponse(content=[{"text": json.dumps(payload)}])
     return llm
+
+
+def _run(coro):
+    return asyncio.run(coro)
 
 
 class TestMechanismExtractor:
@@ -436,7 +440,7 @@ class TestMechanismExtractor:
             "code_snippet": "memcpy(buf, input, user_len);",
             "crash_evidence": None,
         }
-        mech = extractor.extract(finding, source_repo="https://example/repo")
+        mech = _run(extractor.aextract(finding, source_repo="https://example/repo"))
         assert mech is not None
         assert "length field trusted" in mech.summary
         assert "length_field" in mech.tags
@@ -446,45 +450,47 @@ class TestMechanismExtractor:
         assert mech.source_repo == "https://example/repo"
 
     def test_extract_parses_from_wrapped_response(self):
-        mock_llm = MagicMock()
-        resp = MagicMock()
-        resp.content = """Here's the mechanism:
+        mock_llm = AsyncMock()
+        mock_llm.aask_text.return_value = ChatResponse(
+            content=[
+                {
+                    "text": """Here's the mechanism:
 {"summary": "xss via innerHTML", "tags": ["xss"], "keywords": ["innerHTML"], "what_made_it_exploitable": "no sanitizer"}
 Done."""
-        mock_llm.invoke.return_value = resp
+                }
+            ]
+        )
         extractor = MechanismExtractor(mock_llm)
         finding = {"id": "f", "file": "x.js", "description": "xss"}
-        mech = extractor.extract(finding)
+        mech = _run(extractor.aextract(finding))
         assert mech is not None
         assert "xss" in mech.summary
 
     def test_extract_invalid_response(self):
-        mock_llm = MagicMock()
-        resp = MagicMock()
-        resp.content = "not json"
-        mock_llm.invoke.return_value = resp
+        mock_llm = AsyncMock()
+        mock_llm.aask_text.return_value = ChatResponse(content=[{"text": "not json"}])
         extractor = MechanismExtractor(mock_llm)
-        result = extractor.extract({"id": "f"})
+        result = _run(extractor.aextract({"id": "f"}))
         assert result is None
 
     def test_extract_llm_exception(self):
-        mock_llm = MagicMock()
-        mock_llm.invoke.side_effect = Exception("rate limited")
+        mock_llm = AsyncMock()
+        mock_llm.aask_text.side_effect = Exception("rate limited")
         extractor = MechanismExtractor(mock_llm)
-        result = extractor.extract({"id": "f"})
+        result = _run(extractor.aextract({"id": "f"}))
         assert result is None
 
     def test_language_inferred_from_filename(self):
         llm = _mock_llm({"summary": "", "tags": [], "keywords": [], "what_made_it_exploitable": ""})
         extractor = MechanismExtractor(llm)
         # C file
-        mech = extractor.extract({"id": "f", "file": "a.c", "cwe": ""})
+        mech = _run(extractor.aextract({"id": "f", "file": "a.c", "cwe": ""}))
         assert mech.language == "c"
         # Python file
-        mech = extractor.extract({"id": "f", "file": "a.py", "cwe": ""})
+        mech = _run(extractor.aextract({"id": "f", "file": "a.py", "cwe": ""}))
         assert mech.language == "python"
         # Unknown extension → empty
-        mech = extractor.extract({"id": "f", "file": "a.xyz", "cwe": ""})
+        mech = _run(extractor.aextract({"id": "f", "file": "a.xyz", "cwe": ""}))
         assert mech.language == ""
 
 

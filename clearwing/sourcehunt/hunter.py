@@ -842,8 +842,8 @@ class NativeHunter:
                     "message": _serialize_message(
                         ChatMessage(
                             "assistant",
-                            response.text or "",
-                            tool_calls=response.tool_calls,
+                            response.first_text() or "",
+                            tool_calls=response.tool_calls(),
                         )
                     ),
                     "usage": {
@@ -862,11 +862,16 @@ class NativeHunter:
                 self.llm.model_name,
             )
 
-            if response.tool_calls:
+            tool_calls_in_response = response.tool_calls()
+            if tool_calls_in_response:
                 messages.append(
-                    ChatMessage("assistant", response.text or "", tool_calls=response.tool_calls)
+                    ChatMessage(
+                        "assistant",
+                        response.first_text() or "",
+                        tool_calls=tool_calls_in_response,
+                    )
                 )
-                for tool_call in response.tool_calls:
+                for tool_call in tool_calls_in_response:
                     tool_arguments = tool_call.fn_arguments
                     if not isinstance(tool_arguments, dict):
                         tool_arguments = {}
@@ -934,8 +939,9 @@ class NativeHunter:
                     )
                 continue
 
-            if response.text:
-                messages.append(ChatMessage("assistant", response.text))
+            response_text = response.first_text()
+            if response_text:
+                messages.append(ChatMessage("assistant", response_text))
             logger.info(
                 "Hunter finished for %s after %d steps findings=%d",
                 self.ctx.file_path,

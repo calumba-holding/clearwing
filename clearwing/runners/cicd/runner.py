@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import socket
@@ -9,7 +10,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from clearwing.agent.graph import create_agent
-from clearwing.llm import HumanMessage
 from clearwing.observability.telemetry import CostTracker
 
 from .sarif import SARIFGenerator
@@ -120,7 +120,7 @@ class CICDRunner:
         goal = self._build_goal()
 
         initial_state = {
-            "messages": [HumanMessage(content=goal)],
+            "messages": [{"role": "user", "content": goal}],
             "target": self.target,
             "open_ports": [],
             "services": [],
@@ -141,12 +141,15 @@ class CICDRunner:
         timeout_seconds = self.timeout_minutes * 60
         deadline = start_time + timeout_seconds
 
-        try:
-            for _event in graph.stream(initial_state, config, stream_mode="values"):
+        async def _drive() -> None:
+            async for _event in graph.astream(initial_state, config, stream_mode="values"):
                 if time.monotonic() > deadline:
                     break
                 if cost_tracker and cost_tracker.is_over_limit():
                     break
+
+        try:
+            asyncio.run(_drive())
         except Exception:
             logger.warning("CI/CD agent loop failed", exc_info=True)
 

@@ -36,7 +36,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from clearwing.llm import AsyncLLMClient
-from clearwing.llm.compat import invoke_text_compat
 
 from .state import Finding
 
@@ -142,7 +141,7 @@ class MechanismExtractor:
     def __init__(self, llm: AsyncLLMClient):
         self.llm = llm
 
-    def extract(
+    async def aextract(
         self,
         finding: Finding,
         source_repo: str = "",
@@ -150,11 +149,11 @@ class MechanismExtractor:
         """Extract a Mechanism from one verified finding. Returns None on failure."""
         user_msg = self._build_user_message(finding)
         try:
-            content = invoke_text_compat(
-                self.llm,
+            response = await self.llm.aask_text(
                 system=MECHANISM_EXTRACTION_PROMPT,
                 user=user_msg,
             )
+            content = response.first_text() or ""
         except Exception:
             logger.debug("Mechanism extraction LLM call failed", exc_info=True)
             return None

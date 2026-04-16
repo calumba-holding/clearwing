@@ -14,10 +14,10 @@ Critical assertions:
 
 from __future__ import annotations
 
-import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from genai_pyo3 import ChatResponse
 
 from clearwing.sourcehunt.pool import assign_tier
 from clearwing.sourcehunt.ranker import (
@@ -54,12 +54,10 @@ def _make_file(
     }
 
 
-def _mock_llm_returning(scores: list[dict]) -> MagicMock:
-    """Build a MagicMock LLM whose .invoke returns a response with JSON scores."""
-    mock = MagicMock()
-    response = MagicMock()
-    response.content = json.dumps(scores)
-    mock.invoke.return_value = response
+def _mock_llm_returning(scores: list[dict]) -> AsyncMock:
+    """Build an AsyncMock LLM whose .aask_json returns (parsed_scores, response)."""
+    mock = AsyncMock()
+    mock.aask_json.return_value = ({"results": scores}, ChatResponse())
     return mock
 
 
@@ -68,11 +66,11 @@ def _mock_llm_returning(scores: list[dict]) -> MagicMock:
 
 class TestRanker:
     def test_empty_files_returns_empty(self):
-        llm = MagicMock()
+        llm = AsyncMock()
         ranker = Ranker(llm)
         out = ranker.rank([])
         assert out == []
-        llm.invoke.assert_not_called()
+        llm.aask_json.assert_not_called()
 
     def test_basic_rank_fills_in_scores(self):
         llm = _mock_llm_returning(
@@ -245,7 +243,7 @@ class TestChunking:
         )
         files = [_make_file(f"f{i}.c") for i in range(250)]
         Ranker(llm, RankerConfig(chunk_size=100)).rank(files)
-        assert llm.invoke.call_count == 3
+        assert llm.aask_json.call_count == 3
 
 
 # --- LLM response handling ---------------------------------------------------
@@ -300,8 +298,8 @@ class TestFallbackOnLLMSilence:
         assert files[0]["influence"] == 5
 
     def test_fallback_when_llm_raises(self):
-        llm = MagicMock()
-        llm.invoke.side_effect = Exception("rate limited")
+        llm = AsyncMock()
+        llm.aask_json.side_effect = Exception("rate limited")
         files = [_make_file("foo.c", tags=["parser"], static_hint=2, imports_by=15)]
         Ranker(llm).rank(files)
         # Failure → fallback — surface should be at least 3 from static_hint floor

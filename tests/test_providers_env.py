@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import pytest
 
+from clearwing.llm import ChatModel
 from clearwing.providers import (
     DEFAULT_ANTHROPIC_MODEL,
     ENV_ANTHROPIC_KEY,
@@ -27,7 +28,6 @@ from clearwing.providers import (
     ProviderManager,
     resolve_llm_endpoint,
 )
-from clearwing.providers.genai_pyo3_chat import GenAIPyO3ChatModel
 
 
 @pytest.fixture
@@ -293,7 +293,7 @@ class TestProviderManagerForEndpoint:
         hunter = pm.get_llm("hunter")
         verifier = pm.get_llm("verifier")
 
-        assert isinstance(ranker, GenAIPyO3ChatModel)
+        assert isinstance(ranker, ChatModel)
         assert ranker is hunter
         assert hunter is verifier
         assert ranker.provider_name == "anthropic"
@@ -309,7 +309,7 @@ class TestProviderManagerForEndpoint:
         )
         pm = ProviderManager.for_endpoint(endpoint)
         got = pm.get_llm("hunter")
-        assert isinstance(got, GenAIPyO3ChatModel)
+        assert isinstance(got, ChatModel)
         assert got.base_url == "https://openrouter.ai/api/v1"
         assert got.api_key == "sk-or-test"
         assert got.model_name == "anthropic/claude-opus-4"

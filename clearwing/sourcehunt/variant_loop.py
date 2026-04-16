@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from clearwing.llm import AsyncLLMClient
-from clearwing.llm.compat import invoke_text_compat
 
 from .state import Finding
 
@@ -107,14 +106,14 @@ class VariantPatternGenerator:
     def __init__(self, llm: AsyncLLMClient):
         self.llm = llm
 
-    def generate(self, finding: Finding) -> VariantPattern | None:
+    async def agenerate(self, finding: Finding) -> VariantPattern | None:
         user_msg = self._build_user_message(finding)
         try:
-            content = invoke_text_compat(
-                self.llm,
+            response = await self.llm.aask_text(
                 system=PATTERN_GEN_SYSTEM_PROMPT,
                 user=user_msg,
             )
+            content = response.first_text() or ""
         except Exception:
             logger.debug("Variant pattern LLM call failed", exc_info=True)
             return None
@@ -282,45 +281,19 @@ class VariantLoop:
         self.searcher = searcher or VariantSearcher()
         self.config = config or VariantLoopConfig()
 
-    def run(
+    async def arun(
         self,
         verified_findings: list[Finding],
         repo_path: str,
         already_seen_locations: set | None = None,
         reverify_callback: Callable[[list[Any]], list[Finding]] | None = None,
     ) -> VariantLoopResult:
-        """Drive the variant loop until fixpoint or budget exhausted.
-
-        This is the production driver — it runs run_once() repeatedly,
-        feeding each iteration's new variants back in as seeds for the
-        next iteration's pattern generation. Terminates when any of:
-            - iterations_run >= config.max_iterations
-            - an iteration produces zero new variant seeds
-            - reverify_callback raises or returns None
-
-        Args:
-            verified_findings: initial seed set.
-            repo_path: clone root.
-            already_seen_locations: initial (file, line_number) tuples to skip.
-            reverify_callback: Optional callable
-                `(seeds: list[VariantSeed]) -> list[Finding]`. If
-                supplied, the driver calls it after each iteration to
-                re-verify the seeds as Findings, then feeds those
-                new findings into the NEXT iteration's pattern generation.
-                If None, seeds are accumulated but NOT re-verified —
-                subsequent iterations only operate on the original
-                verified_findings, making the fixpoint a single-pass.
-
-        Returns:
-            A single VariantLoopResult aggregating seeds/patterns/matches
-            across every iteration, with .iterations reflecting the count.
-        """
         aggregate = VariantLoopResult()
         seen_locations = set(already_seen_locations or set())
         current_findings = list(verified_findings)
 
         for iteration in range(1, self.config.max_iterations + 1):
-            pass_result = self.run_once(
+            pass_result = await self.arun_once(
                 verified_findings=current_findings,
                 repo_path=repo_path,
                 already_seen_locations=seen_locations,
@@ -330,14 +303,12 @@ class VariantLoop:
             aggregate.seeds.extend(pass_result.seeds)
             aggregate.iterations = iteration
 
-            # Per-iteration observation hook
             if self.config.per_iteration_callback is not None:
                 try:
                     self.config.per_iteration_callback(pass_result)
                 except Exception:
                     logger.debug("per_iteration_callback raised", exc_info=True)
 
-            # Fixpoint check: an empty pass means nothing new was found.
             if self.config.stop_on_empty_iteration and not pass_result.seeds:
                 logger.debug(
                     "Variant loop fixpoint reached after %d iteration(s)",
@@ -345,15 +316,9 @@ class VariantLoop:
                 )
                 break
 
-            # For the next iteration, extend already_seen with what we just
-            # found so we don't rediscover the same locations.
             for seed in pass_result.seeds:
                 seen_locations.add((seed.match.file, seed.match.line_number))
 
-            # If a reverify_callback was supplied, turn the new seeds into
-            # actual verified findings and use THOSE as the next iteration's
-            # input. This is how "compounding inside one run" works — each
-            # iteration's confirmed variants spawn the next pattern search.
             if reverify_callback is not None:
                 try:
                     new_verified = reverify_callback(pass_result.seeds)
@@ -364,44 +329,26 @@ class VariantLoop:
                     )
                     break
                 if not new_verified:
-                    # Nothing survived re-verification → no new seeds for next pass
                     break
                 current_findings = list(new_verified)
-            else:
-                # Without a callback, subsequent iterations keep the same
-                # seed set. This is the "cheap mode" — still terminates on
-                # empty iteration because the patterns are deterministic.
-                pass
 
         return aggregate
 
-    def run_once(
+    async def arun_once(
         self,
         verified_findings: list[Finding],
         repo_path: str,
         already_seen_locations: set | None = None,
     ) -> VariantLoopResult:
-        """Single pass of the variant loop.
-
-        Args:
-            verified_findings: Findings that have passed the verifier.
-            repo_path: Absolute path to the cloned repo.
-            already_seen_locations: Set of (file, line_number) tuples to skip
-                (e.g. locations already reported). Prevents re-flagging.
-
-        Returns:
-            VariantLoopResult with seeds the caller should push into the pool.
-        """
         result = VariantLoopResult()
         seen = already_seen_locations or set()
         for finding in verified_findings:
-            pattern = self.pattern_gen.generate(finding)
+            pattern = await self.pattern_gen.agenerate(finding)
             if pattern is None:
                 continue
             result.patterns_generated += 1
 
             matches = self.searcher.search(repo_path, pattern, finding)
-            # Cap matches per finding
             matches = matches[: self.config.max_variants_per_finding]
             for m in matches:
                 key = (m.file, m.line_number)

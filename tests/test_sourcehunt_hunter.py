@@ -16,10 +16,10 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from genai_pyo3 import ChatResponse, Usage
 
 from clearwing.agent.tools.hunt import (
     HunterContext,
@@ -450,10 +450,9 @@ class TestHunterTrajectoryLogging:
             async def achat(self, *, messages, system, tools):
                 assert system == "system prompt"
                 assert len(messages) == 1
-                return SimpleNamespace(
-                    text="No findings.",
-                    tool_calls=[],
-                    usage=SimpleNamespace(prompt_tokens=11, completion_tokens=7, total_tokens=18),
+                return ChatResponse(
+                    content=[{"text": "No findings."}],
+                    usage=Usage(prompt_tokens=11, completion_tokens=7, total_tokens=18),
                     provider_model_name="stub-provider",
                 )
 

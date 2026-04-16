@@ -712,7 +712,7 @@ requires-dist = [
     { name = "docker", specifier = ">=7.0.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=6.0.0" },
-    { name = "genai-pyo3", git = "https://github.com/ropoctl/genai-pyo3?rev=59e35864b8a00197ff992c50c90d5ef3132b53b1" },
+    { name = "genai-pyo3", specifier = ">=0.1.9" },
     { name = "jinja2", specifier = ">=3.1.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.5.0" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.4.0" },
@@ -1133,8 +1133,30 @@ wheels = [
 
 [[package]]
 name = "genai-pyo3"
-version = "0.1.0"
-source = { git = "https://github.com/ropoctl/genai-pyo3?rev=59e35864b8a00197ff992c50c90d5ef3132b53b1#59e35864b8a00197ff992c50c90d5ef3132b53b1" }
+version = "0.1.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b0/0b/673c21d4aa5876c34726ad90d50b762c5346763271833b899883383a373b/genai_pyo3-0.1.9.tar.gz", hash = "sha256:f756c8109a0060c3d49ab4a8b84f6820dca04b71b072485338ebe4d36771fd75", size = 39252 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c4/bf/3dea5058b67dc4e5be6d72ff7c0dc110c658b6a16a19a21c70032c5c648b/genai_pyo3-0.1.9-cp310-cp310-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:58eec6c1ce3213de63c9ef2898d7daf255bdedffaf365e3e1eed0fcccb243ed7", size = 7677544 },
+    { url = "https://files.pythonhosted.org/packages/a9/c9/22b9581758eab776c2d639a81a46d1e60fba6ab46145f170aa88f4c3ffd7/genai_pyo3-0.1.9-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:fe0041e6b69453ab909b11435e76e29b7d54cbb2fe47926e1b7762a4e669cafb", size = 4024932 },
+    { url = "https://files.pythonhosted.org/packages/42/e1/e62371c433372a62d349088d01a0f55afd29b0bc61508519757bbf26cde7/genai_pyo3-0.1.9-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:af346896b7e7ae98abdb898f77b7f85d7e3f0d500d8be2ff9fb6bf97dfc961fb", size = 4090369 },
+    { url = "https://files.pythonhosted.org/packages/b7/de/f457f518c2803758cdde3face9b4a0998688aa08536f30ea2f5aa0779566/genai_pyo3-0.1.9-cp310-cp310-win_amd64.whl", hash = "sha256:dbb99ffbdefe63d9d35ad6a5d12e60c57727755466309aefa22a2e3753caf032", size = 3288173 },
+    { url = "https://files.pythonhosted.org/packages/11/a6/ac159a222d4e7e8eae01c07e77287f112f1d7c2816b2ddea2347e9b8ea83/genai_pyo3-0.1.9-cp311-cp311-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:22cd685604ee496761450d0f1f717919b6b3b2b69f791bd4acfb96d0d78d79b8", size = 7676911 },
+    { url = "https://files.pythonhosted.org/packages/45/8b/c9971f78f52d01a04209b3f2f6ce0a96f39e754c9d95ce898bf380372ec1/genai_pyo3-0.1.9-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:bd05fcb3d83f733464552ed4479fb4edc0138116b3334121e697df8eb5f18344", size = 4025949 },
+    { url = "https://files.pythonhosted.org/packages/bb/db/796e3695e0c00f36d20db5d3ce07aba6ea04b20a1a90d578c4fff1a258cb/genai_pyo3-0.1.9-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:befec491da2e166621be4bc098249ed23864dbe6a2f5351423ff443cde6db235", size = 4090014 },
+    { url = "https://files.pythonhosted.org/packages/a8/5b/0f706c1eab48f6eb6bcf9e1c74f7b0438c7869293bf2c5652b58a86dc34d/genai_pyo3-0.1.9-cp311-cp311-win_amd64.whl", hash = "sha256:2f2b8a2aac92e27b063ccb517670df38355e2be3370db220fb611cbbb0e9bb41", size = 3288202 },
+    { url = "https://files.pythonhosted.org/packages/4b/05/6a1aa075c1ea3eac468ca1d79a48b07333d752c6f7c32b59a6a235e29d9d/genai_pyo3-0.1.9-cp312-cp312-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:1310fb37b46049a72b53993f479f1f5e7c72c4bc0b8baa26590f6596b5a50c67", size = 7657931 },
+    { url = "https://files.pythonhosted.org/packages/d3/55/124e2125b204e6e3f6cdbd9f9c7ae8483fa5e12b9f63cf5a6325f30530d8/genai_pyo3-0.1.9-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:78430cd9af115e1954ff7e46bde52c87fdda597fdca35d373dea1ce94e3fc519", size = 4020739 },
+    { url = "https://files.pythonhosted.org/packages/9c/de/a70c96cfbdb6347a9d308fbedc4c924e2ee3ee13735f5808eec0b6a000cb/genai_pyo3-0.1.9-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:76ec105d1687747f0aec95dc71de259cc2142cd95a7b3710512e9d9655a514ad", size = 4089642 },
+    { url = "https://files.pythonhosted.org/packages/08/8d/be8cbbd1e1d98a6dc2e477b4b562053ca83fcd56a939b0996eb67956f177/genai_pyo3-0.1.9-cp312-cp312-win_amd64.whl", hash = "sha256:3f49511c529ce5959e197ce945a1591b0fbe0b7c91c7035e0b8d939fab8174e3", size = 3283732 },
+    { url = "https://files.pythonhosted.org/packages/a5/60/1e713e91a56408aa55557f0f458dea166e0e681792e1eace8881c3edaecc/genai_pyo3-0.1.9-cp313-cp313-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:6ad66acc97879b2f696f92954011d0b1960e275d75f89ddaa53ff08f68433066", size = 7657850 },
+    { url = "https://files.pythonhosted.org/packages/96/90/96f1372230ad708f70ae75735554312207a31e67f61ddef45220e5793f39/genai_pyo3-0.1.9-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2a6a91131e80ec60f81fbb86b2eb87797ccfd80f3a197e019ce2aa01af524864", size = 4020296 },
+    { url = "https://files.pythonhosted.org/packages/04/c9/33088ed96769ce4c46e93554f67785a74c774949c13b0513f6f653086396/genai_pyo3-0.1.9-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:77106d8d9888eea9e3990c2294bc3bf0e02a79f65efbd67ad0535aca5bd942d4", size = 4088481 },
+    { url = "https://files.pythonhosted.org/packages/98/7d/a10fab8221e485d8f631d87c521ae2c8d3a440bbb5f76b831071f570df0f/genai_pyo3-0.1.9-cp313-cp313-win_amd64.whl", hash = "sha256:a79216348586dec2869ca4a1dffc9d3331c469e3a8e67157d40d460ccec55b67", size = 3283573 },
+]
 
 [[package]]
 name = "ghp-import"

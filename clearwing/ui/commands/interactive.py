@@ -1,5 +1,6 @@
 """Interactive agent subcommand."""
 
+import asyncio
 import logging
 import os
 import socket
@@ -13,7 +14,6 @@ from clearwing.agent.runtime import Command
 from clearwing.agent.tools.ops.dynamic_tool_creator import get_custom_tools
 from clearwing.agent.tools.ops.kali_docker_tool import kali_cleanup
 from clearwing.data.memory import SessionStore
-from clearwing.llm import HumanMessage
 from clearwing.observability.telemetry import CostTracker
 from clearwing.ui.tui import ClearwingApp
 
@@ -201,13 +201,16 @@ def _run_interactive_legacy(cli, args, session=None):
         if not user_input.strip():
             continue
 
-        input_msg = {"messages": [HumanMessage(content=user_input)]}
+        input_msg = {"messages": [{"role": "user", "content": user_input}]}
         input_msg.update(initial_state)
         initial_state = {}
 
+        async def _collect_events(g, msg) -> list:
+            return [ev async for ev in g.astream(msg, config, stream_mode="values")]
+
         try:
             while True:
-                events = list(graph.stream(input_msg, config, stream_mode="values"))
+                events = asyncio.run(_collect_events(graph, input_msg))
                 interrupted = False
 
                 for event in events:

@@ -214,7 +214,7 @@ class ChatModel:
             tools=self.bound_tools or None,
         )
         return AIMessage(
-            content=response.text,
+            content=response.first_text() or "",
             tool_calls=[
                 {
                     "id": tool_call.call_id,
@@ -222,7 +222,7 @@ class ChatModel:
                     "args": tool_call.fn_arguments,
                     "type": "tool_call",
                 }
-                for tool_call in response.tool_calls
+                for tool_call in response.tool_calls()
             ],
             response_metadata={
                 "usage": {
@@ -242,7 +242,7 @@ class ChatModel:
             tools=self.bound_tools or None,
         )
         return AIMessage(
-            content=response.text,
+            content=response.first_text() or "",
             tool_calls=[
                 {
                     "id": tool_call.call_id,
@@ -250,7 +250,7 @@ class ChatModel:
                     "args": tool_call.fn_arguments,
                     "type": "tool_call",
                 }
-                for tool_call in response.tool_calls
+                for tool_call in response.tool_calls()
             ],
             response_metadata={
                 "usage": {

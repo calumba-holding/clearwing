@@ -5,52 +5,27 @@ the PR checklist, and commit style.
 
 ## Dev setup
 
-Clearwing targets Python 3.10+. The fastest path to a working dev
-environment:
-
-```bash
-git clone https://github.com/Lazarus-AI/clearwing.git
-cd clearwing
-python3 -m venv venv
-source venv/bin/activate  # fish users: source venv/bin/activate.fish
-make install-dev
-```
-
-`make install-dev` runs `pip install -e '.[dev]' build twine ruff`
-against the active interpreter. Once it finishes, `clearwing --help`
-should work and `make test` should pass.
-
-### Reproducible environment via `uv` (recommended)
-
-The repo ships a `uv.lock` that pins exact versions of every runtime
-and dev dependency — including transitive ones — against a specific
-Python version. If you want a bit-for-bit reproducible environment:
+Clearwing targets Python 3.10+. Use `uv`, not raw `pip`.
+The fastest path to a working dev environment:
 
 ```bash
 # Install uv once: https://docs.astral.sh/uv/
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Clone and sync
 git clone https://github.com/Lazarus-AI/clearwing.git
 cd clearwing
 uv sync --all-extras
-
-# Drop into the locked environment for any command
-uv run make gate
 uv run clearwing --help
-uv run pytest tests/test_sourcehunt_hunter.py
 ```
 
 `uv sync --all-extras` reads `pyproject.toml` + `uv.lock` and builds a
-virtualenv in `.venv/` with the exact package set. Unlike `pip install
--e '.[dev]'`, this is guaranteed to match CI and other contributors'
-environments — no "works on my machine" surprises from a transitive
-dep silently upgrading.
+virtualenv in `.venv/` with the exact package set. Use `uv run ...` for
+every project command so you are executing against the locked environment.
 
 When you bump a dependency in `pyproject.toml`, run `uv lock` to
 regenerate the lockfile and commit both files together. CI reads from
 `pyproject.toml` only (to catch lockfile drift) but local development
-is faster with `uv sync`.
+is faster and more reproducible with `uv sync`.
 
 ## The local gate
 
@@ -58,29 +33,29 @@ Every PR is expected to pass `make gate` locally before it's opened.
 That target mirrors CI exactly:
 
 ```bash
-make gate
+uv run make gate
 ```
 
 which is shorthand for:
 
 ```bash
-make lint          # ruff check + ruff format --check
-make type          # scoped mypy on the typed-core modules
-make test-strict   # pytest -q --strict-markers --strict-config
-make build         # python -m build + twine check
+uv run make lint          # ruff check + ruff format --check
+uv run make type          # scoped mypy on the typed-core modules
+uv run make test-strict   # pytest -q --strict-markers --strict-config
+uv run make build         # python -m build + twine check
 ```
 
 Individual targets:
 
 | Target | What it runs |
 |---|---|
-| `make lint` | `ruff check clearwing/ tests/` + `ruff format --check clearwing/ tests/` |
-| `make format` / `make fmt` | `ruff format` + `ruff check --fix` (writes changes) |
-| `make type` | `mypy --follow-imports=silent clearwing/findings clearwing/sourcehunt clearwing/capabilities.py` |
-| `make test` | `pytest -q` |
-| `make test-strict` | `pytest -q --strict-markers --strict-config` (CI mode) |
-| `make build` | `python -m build` + `twine check dist/*` (auto-cleans first) |
-| `make clean` | wipes `dist/`, `build/`, `*.egg-info/`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/` |
+| `uv run make lint` | `ruff check clearwing/ tests/` + `ruff format --check clearwing/ tests/` |
+| `uv run make format` / `uv run make fmt` | `ruff format` + `ruff check --fix` (writes changes) |
+| `uv run make type` | `mypy --follow-imports=silent clearwing/findings clearwing/sourcehunt clearwing/capabilities.py` |
+| `uv run make test` | `pytest -q` |
+| `uv run make test-strict` | `pytest -q --strict-markers --strict-config` (CI mode) |
+| `uv run make build` | `python -m build` + `twine check dist/*` (auto-cleans first) |
+| `uv run make clean` | wipes `dist/`, `build/`, `*.egg-info/`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/` |
 
 If `make gate` is green locally, CI will be green remotely. If it's
 red locally, fix before pushing — CI won't give you anything new.
@@ -89,7 +64,7 @@ red locally, fix before pushing — CI won't give you anything new.
 
 Before opening a PR, confirm:
 
-- [ ] `make gate` passes locally.
+- [ ] `uv run make gate` passes locally.
 - [ ] New tests cover the change. For bug fixes, add a regression
       test that fails on main without the fix. For features, add a
       test that exercises the golden path and at least one edge case.

@@ -1,7 +1,31 @@
 """Tests for the Operator agent."""
 
+import asyncio
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+
+def _astream_of(events):
+    """Return an async-generator function yielding the given events."""
+
+    async def _gen(*args, **kwargs):
+        for event in events:
+            yield event
+
+    return _gen
+
+
+def _astream_raises(exc):
+    async def _gen(*args, **kwargs):
+        raise exc
+        yield  # pragma: no cover
+
+    return _gen
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
 
 from clearwing.agent.operator import (
     _OPERATOR_SYSTEM_PROMPT,
@@ -128,9 +152,9 @@ class TestRunInnerTurn:
         mock_ai.content = "I found port 22 open."
 
         mock_graph = MagicMock()
-        mock_graph.stream.return_value = [{"messages": [mock_ai]}]
+        mock_graph.astream = _astream_of([{"messages": [mock_ai]}])
 
-        result = op._run_inner_turn(mock_graph, {}, {"messages": []})
+        result = _run(op._arun_inner_turn(mock_graph, {}, {"messages": []}))
         assert "port 22" in result
 
     def test_handles_list_content(self):
@@ -142,9 +166,9 @@ class TestRunInnerTurn:
         mock_ai.content = [{"type": "text", "text": "Found SSH"}]
 
         mock_graph = MagicMock()
-        mock_graph.stream.return_value = [{"messages": [mock_ai]}]
+        mock_graph.astream = _astream_of([{"messages": [mock_ai]}])
 
-        result = op._run_inner_turn(mock_graph, {}, {"messages": []})
+        result = _run(op._arun_inner_turn(mock_graph, {}, {"messages": []}))
         assert "SSH" in result
 
     def test_handles_exception(self):
@@ -152,9 +176,9 @@ class TestRunInnerTurn:
         op = OperatorAgent(cfg)
 
         mock_graph = MagicMock()
-        mock_graph.stream.side_effect = RuntimeError("connection lost")
+        mock_graph.astream = _astream_raises(RuntimeError("connection lost"))
 
-        result = op._run_inner_turn(mock_graph, {}, {"messages": []})
+        result = _run(op._arun_inner_turn(mock_graph, {}, {"messages": []}))
         assert "error" in result.lower()
 
 
@@ -163,24 +187,24 @@ class TestDecideNext:
         cfg = OperatorConfig(goals=["scan ports"], target="10.0.0.1")
         op = OperatorAgent(cfg)
 
-        mock_llm = MagicMock()
+        mock_llm = AsyncMock()
         mock_response = MagicMock()
         mock_response.content = "GOALS_COMPLETE"
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke.return_value = mock_response
 
-        decision = op._decide_next(mock_llm, "All ports scanned, report generated.")
+        decision = _run(op._adecide_next(mock_llm, "All ports scanned, report generated."))
         assert decision.startswith("GOALS_COMPLETE")
 
     def test_escalate(self):
         cfg = OperatorConfig(goals=["scan"], target="10.0.0.1")
         op = OperatorAgent(cfg)
 
-        mock_llm = MagicMock()
+        mock_llm = AsyncMock()
         mock_response = MagicMock()
         mock_response.content = "ESCALATE: What are the login credentials?"
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke.return_value = mock_response
 
-        decision = op._decide_next(mock_llm, "I need credentials to log in.")
+        decision = _run(op._adecide_next(mock_llm, "I need credentials to log in."))
         assert decision.startswith("ESCALATE:")
         assert "credentials" in decision
 
@@ -188,22 +212,22 @@ class TestDecideNext:
         cfg = OperatorConfig(goals=["scan", "exploit"], target="10.0.0.1")
         op = OperatorAgent(cfg)
 
-        mock_llm = MagicMock()
+        mock_llm = AsyncMock()
         mock_response = MagicMock()
         mock_response.content = "Now scan for vulnerabilities on the open ports."
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke.return_value = mock_response
 
-        decision = op._decide_next(mock_llm, "Found ports 22, 80, 443 open.")
+        decision = _run(op._adecide_next(mock_llm, "Found ports 22, 80, 443 open."))
         assert "scan" in decision.lower() or "vulnerabilities" in decision.lower()
 
     def test_handles_llm_error(self):
         cfg = OperatorConfig(goals=["scan"], target="10.0.0.1")
         op = OperatorAgent(cfg)
 
-        mock_llm = MagicMock()
-        mock_llm.invoke.side_effect = RuntimeError("API error")
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke.side_effect = RuntimeError("API error")
 
-        decision = op._decide_next(mock_llm, "Agent output")
+        decision = _run(op._adecide_next(mock_llm, "Agent output"))
         assert "Continue" in decision
 
 
@@ -323,8 +347,9 @@ class TestHandleInterrupt:
         mock_state.tasks = [mock_task]
 
         mock_graph = MagicMock()
+        mock_graph.ainvoke = AsyncMock()
 
-        result = op._handle_interrupt(mock_state, mock_graph, {})
+        result = _run(op._ahandle_interrupt(mock_state, mock_graph, {}))
         assert result is True
 
     def test_exploit_not_auto_approved(self):
@@ -346,7 +371,7 @@ class TestHandleInterrupt:
 
         mock_graph = MagicMock()
 
-        result = op._handle_interrupt(mock_state, mock_graph, {})
+        result = _run(op._ahandle_interrupt(mock_state, mock_graph, {}))
         assert result is False
 
     def test_exploit_auto_approved_when_enabled(self):
@@ -366,8 +391,9 @@ class TestHandleInterrupt:
         mock_state.tasks = [mock_task]
 
         mock_graph = MagicMock()
+        mock_graph.ainvoke = AsyncMock()
 
-        result = op._handle_interrupt(mock_state, mock_graph, {})
+        result = _run(op._ahandle_interrupt(mock_state, mock_graph, {}))
         assert result is True
 
     def test_no_tasks(self):
@@ -377,7 +403,7 @@ class TestHandleInterrupt:
         mock_state = MagicMock()
         mock_state.tasks = None
 
-        result = op._handle_interrupt(mock_state, MagicMock(), {})
+        result = _run(op._ahandle_interrupt(mock_state, MagicMock(), {}))
         assert result is True
 
 
@@ -389,19 +415,28 @@ class TestOperatorRun:
         """Create a mock graph that returns the given responses in sequence."""
         mock_graph = MagicMock()
 
-        # Each call to stream yields one AI message
-        def make_stream(resp_text):
+        def make_events(resp_text):
             mock_ai = MagicMock()
             mock_ai.type = "ai"
             mock_ai.content = resp_text
             return [{"messages": [mock_ai]}]
 
-        side = [make_stream(r) for r in responses]
-        # After exhausting responses, return empty (no AI content)
+        event_sequences = [make_events(r) for r in responses]
         empty = [{"messages": []}]
-        mock_graph.stream.side_effect = side + [empty] * 200
+        event_sequences.extend([empty] * 200)
+        sequence_iter = iter(event_sequences)
 
-        # get_state returns consistent values
+        async def _astream(*args, **kwargs):
+            try:
+                events = next(sequence_iter)
+            except StopIteration:
+                events = empty
+            for event in events:
+                yield event
+
+        mock_graph.astream = _astream
+        mock_graph.ainvoke = AsyncMock()
+
         sv = state_values or {
             "vulnerabilities": [],
             "exploit_results": [],
@@ -417,7 +452,10 @@ class TestOperatorRun:
 
         return mock_graph
 
-    @patch("clearwing.agent.operator.OperatorAgent._decide_next")
+    @patch(
+        "clearwing.agent.operator.OperatorAgent._adecide_next",
+        new_callable=AsyncMock,
+    )
     @patch("clearwing.agent.graph._create_llm")
     @patch("clearwing.agent.operator.create_agent")
     def test_completes_when_goals_met(self, mock_create, mock_create_llm, mock_decide):
@@ -435,7 +473,10 @@ class TestOperatorRun:
         assert result.status == "completed"
         assert result.turns == 2
 
-    @patch("clearwing.agent.operator.OperatorAgent._decide_next")
+    @patch(
+        "clearwing.agent.operator.OperatorAgent._adecide_next",
+        new_callable=AsyncMock,
+    )
     @patch("clearwing.agent.graph._create_llm")
     @patch("clearwing.agent.operator.create_agent")
     def test_escalates_on_unknown_question(self, mock_create, mock_create_llm, mock_decide):
@@ -452,7 +493,10 @@ class TestOperatorRun:
         assert result.status == "escalated"
         assert "SSH credentials" in result.escalation_question
 
-    @patch("clearwing.agent.operator.OperatorAgent._decide_next")
+    @patch(
+        "clearwing.agent.operator.OperatorAgent._adecide_next",
+        new_callable=AsyncMock,
+    )
     @patch("clearwing.agent.graph._create_llm")
     @patch("clearwing.agent.operator.create_agent")
     def test_escalate_with_callback(self, mock_create, mock_create_llm, mock_decide):
@@ -480,7 +524,10 @@ class TestOperatorRun:
 
         assert result.status == "completed"
 
-    @patch("clearwing.agent.operator.OperatorAgent._decide_next")
+    @patch(
+        "clearwing.agent.operator.OperatorAgent._adecide_next",
+        new_callable=AsyncMock,
+    )
     @patch("clearwing.agent.graph._create_llm")
     @patch("clearwing.agent.operator.create_agent")
     def test_max_turns_stops(self, mock_create, mock_create_llm, mock_decide):
@@ -496,7 +543,10 @@ class TestOperatorRun:
         assert result.turns == 3
         assert "max turns" in result.error.lower()
 
-    @patch("clearwing.agent.operator.OperatorAgent._decide_next")
+    @patch(
+        "clearwing.agent.operator.OperatorAgent._adecide_next",
+        new_callable=AsyncMock,
+    )
     @patch("clearwing.agent.graph._create_llm")
     @patch("clearwing.agent.operator.create_agent")
     def test_on_complete_callback(self, mock_create, mock_create_llm, mock_decide):
@@ -517,7 +567,10 @@ class TestOperatorRun:
         assert len(results) == 1
         assert results[0].status == "completed"
 
-    @patch("clearwing.agent.operator.OperatorAgent._decide_next")
+    @patch(
+        "clearwing.agent.operator.OperatorAgent._adecide_next",
+        new_callable=AsyncMock,
+    )
     @patch("clearwing.agent.graph._create_llm")
     @patch("clearwing.agent.operator.create_agent")
     def test_on_message_callback(self, mock_create, mock_create_llm, mock_decide):

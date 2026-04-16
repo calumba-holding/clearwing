@@ -35,8 +35,13 @@ authorization, and disclosure. See `SECURITY.md`.
 **End users** — install the tagged release straight from GitHub:
 
 ```bash
-python3 -m venv venv && source venv/bin/activate
-uv pip install "clearwing[all] @ git+https://github.com/Lazarus-AI/clearwing.git@v1.0.0"
+git clone --branch v1.0.0 https://github.com/Lazarus-AI/clearwing.git
+cd clearwing
+
+# uv sync is recommended because Clearwing pins genai-pyo3 through
+# tool.uv.sources in pyproject.toml.
+uv sync --all-extras
+source .venv/bin/activate  # fish: source .venv/bin/activate.fish
 
 # Interactive setup wizard — menu-driven provider selection,
 # credential entry, optional live test, persists to ~/.clearwing/config.yaml
@@ -66,18 +71,20 @@ export CLEARWING_MODEL=anthropic/claude-opus-4
 See [`docs/providers.md`](docs/providers.md) for provider-specific
 recipes and per-task routing.
 
-**Developers** — clone and install editable so you can run `make gate`:
+**Developers** — clone and install the locked development environment:
 
 ```bash
 git clone https://github.com/Lazarus-AI/clearwing.git
 cd clearwing
-python3 -m venv venv && source venv/bin/activate
-uv pip install -e '.[dev]'
+uv sync --all-extras
+source .venv/bin/activate  # fish: source .venv/bin/activate.fish
 clearwing --help
 ```
 
-Requirements: Python 3.10+, optionally Docker for the Kali container
-and sanitizer-image sandbox features.
+Requirements: Python 3.10+, a recent Rust toolchain for the native
+`genai-pyo3` bridge, and optionally Docker for the Kali container and
+sanitizer-image sandbox features. If the install fails with a Rust version
+error, run `rustup update stable`.
 
 ## Quickstart
 
@@ -140,17 +147,22 @@ Once the GitHub Pages workflow ships, docs will be hosted at
 ## Development
 
 ```bash
-make install-dev           # uv pip install -e '.[dev]' + build/twine/ruff
-make gate                  # full CI gate locally (lint + type + test + build)
-make test                  # pytest -q
-make lint                  # ruff check + ruff format --check
-make type                  # scoped mypy on the typed-core modules
-make docs-serve            # live-reload docs site on 127.0.0.1:8000
+uv sync --all-extras
+source .venv/bin/activate  # fish: source .venv/bin/activate.fish
+pytest -q
+ruff check clearwing/ tests/
+ruff format --check clearwing/ tests/
+mypy --follow-imports=silent \
+  clearwing/findings \
+  clearwing/sourcehunt \
+  clearwing/capabilities.py \
+  clearwing/agent/tools \
+  clearwing/core
+python -m mkdocs serve --dev-addr 127.0.0.1:8000
 ```
 
-`make gate` mirrors CI exactly — if it's green locally, it's green
-remotely. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full
-dev-setup guide and PR checklist.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full dev-setup guide and PR
+checklist.
 
 ## Reporting vulnerabilities
 

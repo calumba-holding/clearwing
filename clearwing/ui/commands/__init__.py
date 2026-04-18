@@ -1,6 +1,7 @@
 """CLI subcommand modules."""
 
 from . import (
+    bench,
     campaign,
     ci,
     config,
@@ -38,4 +39,5 @@ ALL_COMMANDS = [
     sourcehunt,
     disclose,
     campaign,
+    bench,
 ]

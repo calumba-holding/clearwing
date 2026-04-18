@@ -36,7 +36,7 @@ from .disclosure import (
 from .disclosure import (
     write_bundle as write_disclosure_bundle,
 )
-from .exploiter import Exploiter, apply_exploiter_result
+from .exploiter import AgenticExploiter, Exploiter, apply_exploiter_result
 from .harness_generator import HarnessGenerator, HarnessGeneratorConfig, SeededCrash
 from .mechanism_memory import (
     MechanismExtractor,
@@ -76,6 +76,8 @@ class SourceHuntResult:
     tokens_used: int
     output_paths: dict[str, str] = field(default_factory=dict)
     session_id: str = ""
+    subsystems_hunted: int = 0
+    subsystem_spent_usd: float = 0.0
 
     @property
     def critical_count(self) -> int:
@@ -110,6 +112,7 @@ class SourceHuntRunner:
         output_formats: list[str] | None = None,
         no_verify: bool = False,
         no_exploit: bool = False,
+        exploit_budget: str | None = None,  # "standard" | "deep" | "campaign" | None (auto)
         adversarial_verifier: bool = True,  # v0.2: on by default
         adversarial_threshold: EvidenceLevel | None = "static_corroboration",  # v0.4: budget gate
         enable_mechanism_memory: bool = True,  # v0.3: cross-run mechanism store
@@ -144,6 +147,11 @@ class SourceHuntRunner:
         seed_corpus_sources: list[str] | None = None,
         enable_findings_pool: bool = True,
         historical_db_path: Any = None,
+        enable_subsystem_hunt: bool = False,
+        subsystem_paths: list[str] | None = None,
+        no_per_file_hunt: bool = False,
+        subsystem_budget_usd: float = 0.0,
+        subsystem_max_parallel: int = 4,
     ):
         self.repo_url = repo_url
         self.branch = branch
@@ -156,6 +164,7 @@ class SourceHuntRunner:
         self.output_formats = output_formats or ["sarif", "markdown", "json"]
         self.no_verify = no_verify
         self.no_exploit = no_exploit
+        self._exploit_budget_override = exploit_budget
         self.adversarial_verifier = adversarial_verifier
         self.adversarial_threshold = adversarial_threshold
         self.enable_mechanism_memory = enable_mechanism_memory
@@ -193,6 +202,11 @@ class SourceHuntRunner:
         self._seed_corpus_sources = seed_corpus_sources
         self._enable_findings_pool = enable_findings_pool
         self._historical_db_path = historical_db_path
+        self._enable_subsystem_hunt = enable_subsystem_hunt or bool(subsystem_paths)
+        self._subsystem_paths = subsystem_paths
+        self._no_per_file_hunt = no_per_file_hunt
+        self._subsystem_budget_usd = subsystem_budget_usd
+        self._subsystem_max_parallel = subsystem_max_parallel
 
     @property
     def _agent_mode(self) -> str:
@@ -213,6 +227,14 @@ class SourceHuntRunner:
         if self._starting_band_override:
             return self._starting_band_override
         return {"standard": "standard", "deep": "deep"}.get(self.depth, "standard")
+
+    @property
+    def _exploit_budget_band(self) -> str:
+        if self._exploit_budget_override:
+            return self._exploit_budget_override
+        if self.depth == "deep":
+            return "deep"
+        return "standard"
 
     @property
     def _shard_entry_points(self) -> bool:
@@ -382,7 +404,12 @@ class SourceHuntRunner:
             hunter_llm = self._get_native_client("hunter", self.hunter_llm)
             all_findings: list[Finding] = []
             files_hunted = 0
-            if hunter_llm is not None and files:
+            spent_per_tier: dict[str, float] = {"A": 0.0, "B": 0.0, "C": 0.0}
+            band_stats: dict | None = None
+
+            if self._no_per_file_hunt:
+                logger.info("Per-file hunt skipped (--no-per-file-hunt)")
+            elif hunter_llm is not None and files:
                 logger.info("HunterPool starting on %d files", len(files))
                 pool = HunterPool(
                     HuntPoolConfig(
@@ -435,8 +462,6 @@ class SourceHuntRunner:
                 )
             else:
                 logger.info("HunterPool skipped; no LLM available")
-                spent_per_tier = {"A": 0.0, "B": 0.0, "C": 0.0}
-                band_stats = None
 
             # Promote static findings into the all_findings list so depth=quick
             # output is still useful when no hunter llm is available
@@ -453,6 +478,70 @@ class SourceHuntRunner:
                     logger.warning("Historical DB ingest failed", exc_info=True)
                 finally:
                     historical_db.close()
+
+            # 3.7. Subsystem hunt (spec 006)
+            subsystems_hunted = 0
+            subsystem_spent = 0.0
+            if self._enable_subsystem_hunt and hunter_llm is not None:
+                from .subsystem import (
+                    SubsystemHuntConfig,
+                    SubsystemHuntRunner as SubsysRunner,
+                    identify_subsystems_auto,
+                    subsystem_from_path,
+                )
+
+                subsystem_targets: list = []
+                if self._subsystem_paths:
+                    for sp in self._subsystem_paths:
+                        try:
+                            st = subsystem_from_path(
+                                sp, files,
+                                callgraph=preprocess_result.callgraph,
+                                entry_points_by_file=entry_points_by_file,
+                            )
+                            subsystem_targets.append(st)
+                        except ValueError:
+                            logger.warning("No files match subsystem path: %s", sp)
+                else:
+                    subsystem_targets = identify_subsystems_auto(
+                        files,
+                        callgraph=preprocess_result.callgraph,
+                        entry_points_by_file=entry_points_by_file,
+                    )
+
+                if subsystem_targets:
+                    logger.info(
+                        "Subsystem hunt: %d targets identified", len(subsystem_targets),
+                    )
+                    for st in subsystem_targets:
+                        logger.info(
+                            "  %s (%d files, priority=%.2f)",
+                            st.name, len(st.files), st.priority,
+                        )
+                    subsys_runner = SubsysRunner(SubsystemHuntConfig(
+                        subsystems=subsystem_targets,
+                        repo_path=repo_path,
+                        sandbox_factory=self.sandbox_factory,
+                        llm=hunter_llm,
+                        max_parallel=self._subsystem_max_parallel,
+                        budget_per_subsystem_usd=self._subsystem_budget_usd or 100.0,
+                        findings_pool=findings_pool,
+                        session_id_prefix=f"{self._session_id}-subsys",
+                        sandbox_manager=self._sandbox_manager,
+                        campaign_hint=self._campaign_hint,
+                        callgraph=preprocess_result.callgraph,
+                    ))
+                    try:
+                        subsys_findings = await subsys_runner.arun()
+                        all_findings.extend(subsys_findings)
+                        subsystems_hunted = len(subsystem_targets)
+                        subsystem_spent = subsys_runner.total_spent
+                        logger.info(
+                            "Subsystem hunt completed: %d findings, $%.4f spent",
+                            len(subsys_findings), subsystem_spent,
+                        )
+                    except Exception:
+                        logger.warning("Subsystem hunt failed", exc_info=True)
 
             # 4. Verify (unless --no-verify)
             verified: list[Finding] = []
@@ -607,16 +696,56 @@ class SourceHuntRunner:
             if not self.no_exploit:
                 exploiter_llm = self._get_native_client("sourcehunt_exploit", self.exploiter_llm)
                 if exploiter_llm is not None:
-                    e = Exploiter(exploiter_llm)
                     eligible = filter_by_evidence(verified, "crash_reproduced")
-                    for finding in eligible:
-                        try:
-                            exploit_result = await e.aattempt(finding)
-                            apply_exploiter_result(finding, exploit_result)
-                            if exploit_result.success:
-                                exploited.append(finding)
-                        except Exception:
-                            logger.warning("Exploiter failed", exc_info=True)
+                    has_sandbox = (
+                        self._sandbox_manager is not None
+                        or self.sandbox_factory is not None
+                    )
+                    if eligible and has_sandbox:
+                        agentic = AgenticExploiter(
+                            llm=exploiter_llm,
+                            sandbox_manager=self._sandbox_manager,
+                            sandbox_factory=self.sandbox_factory,
+                            findings_pool=findings_pool,
+                            budget_band=self._exploit_budget_band,
+                            output_dir=str(self._ensure_output_dir_layout()),
+                            project_name=(
+                                self.repo_url.split("/")[-1]
+                                if self.repo_url else "target"
+                            ),
+                        )
+                        for finding in eligible:
+                            try:
+                                exploit_result = await agentic.aattempt(finding)
+                                apply_exploiter_result(finding, exploit_result)
+                                if exploit_result.success:
+                                    exploited.append(finding)
+                                if (
+                                    exploit_result.partial
+                                    and findings_pool is not None
+                                ):
+                                    finding["primitive_type"] = (
+                                        exploit_result.primitive_type
+                                        or finding.get("primitive_type", "")
+                                    )
+                                    await findings_pool.add(
+                                        finding, session_id=self._session_id,
+                                    )
+                            except Exception:
+                                logger.warning(
+                                    "Agentic exploiter failed for %s",
+                                    finding.get("id"), exc_info=True,
+                                )
+                    elif eligible:
+                        e = Exploiter(exploiter_llm)
+                        for finding in eligible:
+                            try:
+                                exploit_result = await e.aattempt(finding)
+                                apply_exploiter_result(finding, exploit_result)
+                                if exploit_result.success:
+                                    exploited.append(finding)
+                            except Exception:
+                                logger.warning("Exploiter failed", exc_info=True)
 
             # 5.5. v0.3: Auto-patch mode (opt-in).
             # The verify-by-recompile gate is MANDATORY — a patch is only marked
@@ -680,12 +809,17 @@ class SourceHuntRunner:
 
             # 6. Report
             _pool_stats = findings_pool.pool_stats() if findings_pool is not None else None
+            _subsystem_stats = (
+                {"subsystems_hunted": subsystems_hunted, "subsystem_spent_usd": subsystem_spent}
+                if subsystems_hunted > 0 else None
+            )
             output_paths = self._write_report(
                 findings=all_findings,
                 verified=verified,
                 spent_per_tier=spent_per_tier,
                 band_stats=band_stats,
                 pool_stats=_pool_stats,
+                subsystem_stats=_subsystem_stats,
             )
 
             duration = time.monotonic() - start_time
@@ -699,11 +833,13 @@ class SourceHuntRunner:
                 files_ranked=files_ranked,
                 files_hunted=files_hunted,
                 duration_seconds=round(duration, 2),
-                cost_usd=sum(spent_per_tier.values()),
+                cost_usd=sum(spent_per_tier.values()) + subsystem_spent,
                 spent_per_tier=spent_per_tier,
                 tokens_used=0,  # filled by cost tracker if attached
                 output_paths=output_paths,
                 session_id=self._session_id,
+                subsystems_hunted=subsystems_hunted,
+                subsystem_spent_usd=subsystem_spent,
             )
         finally:
             if self._sandbox_manager is not None:
@@ -1139,6 +1275,7 @@ class SourceHuntRunner:
         spent_per_tier: dict,
         band_stats: dict | None = None,
         pool_stats: dict | None = None,
+        subsystem_stats: dict | None = None,
     ) -> dict[str, str]:
         """Write SARIF / markdown / JSON outputs to the output directory.
 
@@ -1162,6 +1299,7 @@ class SourceHuntRunner:
                 formats=self.output_formats,
                 band_stats=band_stats,
                 pool_stats=pool_stats,
+                subsystem_stats=subsystem_stats,
             )
         except Exception:
             logger.warning("Reporter failed", exc_info=True)

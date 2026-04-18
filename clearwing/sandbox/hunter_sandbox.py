@@ -44,6 +44,11 @@ class HunterSandbox:
     DEFAULT_EXTRA_VARIANTS: tuple[tuple[str, ...], ...] = ()
 
     DEEP_AGENT_PACKAGES = ["python3", "valgrind", "ccache", "git", "ltrace"]
+    EXPLOIT_AGENT_PACKAGES = ["gdb", "python3-pip", "ruby", "binutils"]
+    EXPLOIT_POST_INSTALL = [
+        "pip3 install --break-system-packages pwntools ROPgadget seccomp-tools 2>/dev/null || true",
+        "gem install one_gadget 2>/dev/null || true",
+    ]
 
     def __init__(
         self,
@@ -54,6 +59,7 @@ class HunterSandbox:
         extra_packages: list[str] | None = None,
         build_recipe: BuildRecipe | None = None,
         deep_agent_mode: bool = False,
+        post_install_commands: list[str] | None = None,
     ):
         self.repo_path = os.path.abspath(repo_path)
         self.languages = languages or []
@@ -67,6 +73,7 @@ class HunterSandbox:
         for v in self.extra_variants:
             validate_sanitizer_combo(v)
         self.extra_packages = list(extra_packages or [])
+        self.post_install_commands = list(post_install_commands or [])
         self.deep_agent_mode = deep_agent_mode
         if deep_agent_mode:
             for pkg in self.DEEP_AGENT_PACKAGES:
@@ -318,6 +325,12 @@ class HunterSandbox:
         else:
             apt_block = "# (no apt packages)"
 
+        post_install_block = ""
+        if self.post_install_commands:
+            post_install_block = "\n".join(
+                f"RUN {cmd}" for cmd in self.post_install_commands
+            )
+
         # Variant header makes the Dockerfile self-documenting so a human
         # inspecting the built image via `docker history` knows what's in it
         variant_header = f"# Sanitizer variant: {','.join(variant)}"
@@ -326,6 +339,8 @@ class HunterSandbox:
 {variant_header}
 
 {apt_block}
+
+{post_install_block}
 
 {env_block}
 
@@ -352,6 +367,7 @@ RUN mkdir -p /scratch
         h.update(dockerfile.encode("utf-8"))
         h.update(",".join(sorted(variant)).encode("utf-8"))
         h.update(",".join(sorted(self.extra_packages)).encode("utf-8"))
+        h.update("\n".join(self.post_install_commands).encode("utf-8"))
         digest = h.hexdigest()[:12]
         return f"{self.IMAGE_NAME_PREFIX}:{digest}"
 

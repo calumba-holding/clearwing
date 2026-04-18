@@ -28,7 +28,7 @@ from clearwing.llm import AsyncLLMClient, ChatMessage, NativeToolSpec, ToolCall
 from clearwing.observability.telemetry import CostTracker
 from clearwing.sandbox.container import SandboxContainer
 
-from .state import FileTarget, Finding
+from .state import FileTarget, Finding, SubsystemTarget
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,8 @@ def _sanitize_path_component(value: str) -> str:
 
 
 def _trajectory_path(ctx: HunterContext) -> Path:
+    if ctx.trajectory_dir is not None:
+        return Path(ctx.trajectory_dir) / "transcript.jsonl"
     session = _sanitize_path_component(ctx.session_id or "no_session")
     rel_file = _sanitize_path_component((ctx.file_path or "unknown").replace("/", "__"))
     return _trajectory_base_dir() / session / f"{rel_file}.jsonl"
@@ -1049,6 +1051,166 @@ Use the query_findings_pool tool to search for complementary primitives \
 if you discover a vulnerability that could be chained with others \
 (e.g., you find a write primitive — query for info_leak to bypass ASLR)."""
 
+SUBSYSTEM_HUNT_PROMPT = """You are a security researcher investigating the \
+{subsystem_name} subsystem in {project_name}.
+
+This subsystem spans {file_count} files under {root_path}:
+{file_listing}
+{cross_file_calls}
+You have full shell access. The source tree is at /workspace.
+
+Your mission is to find vulnerabilities that EMERGE FROM CROSS-FILE INTERACTIONS:
+- Shared state (globals, structs, locks) modified by one file but consumed by another
+- Protocol/API contracts violated across call boundaries
+- State machine transitions that can be corrupted by concurrent callers
+- Lifetime/ownership confusion when objects cross module boundaries
+- Inconsistent validation: File A validates, File B doesn't, both call File C
+
+Single-file bugs have already been hunted. Focus on bugs that require understanding \
+multiple files simultaneously.
+{existing_findings_block}{entry_points_block}
+When you find a vulnerability, call record_finding with the specific file and line. \
+Cross-file bugs are valuable even as static_corroboration if you can articulate the mechanism."""
+
+
+def _build_subsystem_prompt(
+    subsystem: SubsystemTarget,
+    project_name: str,
+    findings_pool: Any = None,
+    callgraph: Any = None,
+) -> str:
+    """Build the subsystem hunt prompt listing all files and cross-file relationships."""
+    file_lines = []
+    subsystem_files = set()
+    for ft in subsystem.files[:50]:
+        path = ft.get("path", "?")
+        subsystem_files.add(path)
+        pri = ft.get("priority", 0.0)
+        tags = ", ".join(ft.get("tags", [])) or "none"
+        file_lines.append(f"  {path} (priority={pri:.1f}, tags={tags})")
+    file_listing = "\n".join(file_lines)
+
+    cross_file_calls = ""
+    if callgraph is not None:
+        edges: list[str] = []
+        for ft in subsystem.files[:50]:
+            src = ft.get("path", "")
+            called = callgraph.calls_out.get(src, set())
+            for func_name in called:
+                for def_file in callgraph.defined_in.get(func_name, set()):
+                    if def_file != src and def_file in subsystem_files:
+                        edges.append(f"  {src} -> {def_file} (via {func_name})")
+                        if len(edges) >= 30:
+                            break
+                if len(edges) >= 30:
+                    break
+            if len(edges) >= 30:
+                break
+        if edges:
+            cross_file_calls = (
+                "\nCross-file call edges within this subsystem:\n"
+                + "\n".join(edges) + "\n"
+            )
+
+    existing_findings_block = ""
+    if findings_pool is not None:
+        pool_findings = []
+        for fp in subsystem_files:
+            pool_findings.extend(findings_pool.query(file_path=fp))
+        if pool_findings:
+            lines = [
+                f"\nPer-file hunters already found {len(pool_findings)} findings "
+                f"in this subsystem:"
+            ]
+            for f in pool_findings[:10]:
+                lines.append(
+                    f"  - {f.get('file', '?')}:{f.get('line_number', '?')} "
+                    f"({f.get('cwe', '?')}, {f.get('severity', '?')}): "
+                    f"{f.get('description', '')[:150]}"
+                )
+            if len(pool_findings) > 10:
+                lines.append(f"  ... and {len(pool_findings) - 10} more")
+            lines.append(
+                "Use query_findings_pool for the full list. "
+                "Focus on NEW cross-file bugs, not re-discovering these.\n"
+            )
+            existing_findings_block = "\n".join(lines)
+
+    entry_points_block = ""
+    if subsystem.entry_points:
+        ep_lines = ["\nEntry points from untrusted input:"]
+        for ep in subsystem.entry_points[:20]:
+            ep_lines.append(
+                f"  - {getattr(ep, 'function_name', '?')} "
+                f"in {getattr(ep, 'file_path', '?')} "
+                f"(type: {getattr(ep, 'entry_type', '?')})"
+            )
+        if len(subsystem.entry_points) > 20:
+            ep_lines.append(f"  ... and {len(subsystem.entry_points) - 20} more")
+        entry_points_block = "\n".join(ep_lines) + "\n"
+
+    return SUBSYSTEM_HUNT_PROMPT.format(
+        subsystem_name=subsystem.name,
+        project_name=project_name,
+        file_count=len(subsystem.files),
+        root_path=subsystem.root_path,
+        file_listing=file_listing,
+        cross_file_calls=cross_file_calls,
+        existing_findings_block=existing_findings_block,
+        entry_points_block=entry_points_block,
+    )
+
+
+def build_subsystem_hunter_agent(
+    subsystem: SubsystemTarget,
+    repo_path: str,
+    sandbox: SandboxContainer | None,
+    llm: AsyncLLMClient,
+    session_id: str,
+    project_name: str = "target",
+    budget_usd: float = 100.0,
+    findings_pool: Any = None,
+    campaign_hint: str | None = None,
+    callgraph: Any = None,
+) -> tuple[NativeHunter, HunterContext]:
+    """Build a subsystem-level hunter agent (spec 006).
+
+    Always uses deep agent mode with a generous step budget.
+    """
+    ctx = HunterContext(
+        repo_path=repo_path,
+        sandbox=sandbox,
+        findings=[],
+        file_path=subsystem.root_path,
+        session_id=session_id,
+        specialist="subsystem",
+        findings_pool=findings_pool,
+    )
+
+    tools = build_deep_agent_tools(ctx)
+    prompt = _build_subsystem_prompt(
+        subsystem, project_name,
+        findings_pool=findings_pool,
+        callgraph=callgraph,
+    )
+
+    if campaign_hint:
+        prompt += "\n" + CAMPAIGN_HINT_TEMPLATE.format(objective=campaign_hint)
+
+    return NativeHunter(
+        llm=llm,
+        prompt=prompt,
+        tools=tools,
+        ctx=ctx,
+        max_steps=2000,
+        agent_mode="deep",
+        budget_usd=budget_usd,
+        initial_user_message=(
+            f"Hunt for cross-file vulnerabilities in the {subsystem.name} "
+            f"subsystem ({len(subsystem.files)} files under {subsystem.root_path})."
+        ),
+    ), ctx
+
 
 # --- Public factory ----------------------------------------------------------
 
@@ -1071,6 +1233,7 @@ class NativeHunter:
     max_steps: int = 20
     agent_mode: str = "constrained"  # "constrained" | "deep"
     budget_usd: float = 0.0  # 0 = unlimited (bounded by max_steps)
+    initial_user_message: str = ""  # spec 006: override default first message
 
     def _should_stop(self, step: int, cost_usd: float) -> str | None:
         """Return a stop reason string, or None to continue."""
@@ -1081,8 +1244,9 @@ class NativeHunter:
         return None
 
     async def arun(self) -> HunterRunResult:
+        user_msg = self.initial_user_message or f"Hunt for vulnerabilities in {self.ctx.file_path or 'unknown'}."
         messages: list[ChatMessage] = [
-            ChatMessage("user", f"Hunt for vulnerabilities in {self.ctx.file_path or 'unknown'}.")
+            ChatMessage("user", user_msg)
         ]
         trajectory = HunterTrajectoryLogger.for_hunter(
             self.ctx,

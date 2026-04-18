@@ -14,7 +14,8 @@ Findings reaching patch_validated are the gold standard in reports.
 
 from __future__ import annotations
 
-from typing import Literal
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
 from typing_extensions import TypedDict
 
@@ -126,6 +127,22 @@ class FileTarget(TypedDict, total=False):
 # canonical `Finding` dataclass from `clearwing.findings.types`. The
 # dataclass is imported at the top of this module and used directly in
 # the state TypedDicts below.
+
+
+# --- SubsystemTarget (spec 006) ---------------------------------------------
+
+
+@dataclass
+class SubsystemTarget:
+    """A group of related files to hunt as a unit (spec 006)."""
+
+    name: str  # e.g. "tcp_sack", "h264_decoder"
+    root_path: str  # e.g. "net/ipv4/", "libavcodec/"
+    files: list[FileTarget]  # max 50 files, sorted by priority
+    entry_points: list[Any] = field(default_factory=list)
+    description: str = ""
+    priority: float = 0.0  # max(file.priority for file in files)
+    source: str = "auto"  # "auto" | "manual"
 
 
 # --- SourceHuntState ---------------------------------------------------------

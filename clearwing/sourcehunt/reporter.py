@@ -31,6 +31,7 @@ def write_sourcehunt_report(
     formats: list[str] | None = None,
     band_stats: dict | None = None,
     pool_stats: dict | None = None,
+    subsystem_stats: dict | None = None,
 ) -> dict[str, str]:
     """Write the requested formats. Returns {format: filesystem_path}."""
     formats = formats or ["sarif", "markdown", "json"]
@@ -63,6 +64,7 @@ def write_sourcehunt_report(
             spent_per_tier=spent_per_tier,
             band_stats=band_stats,
             pool_stats=pool_stats,
+            subsystem_stats=subsystem_stats,
         )
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(md)
@@ -81,6 +83,8 @@ def write_sourcehunt_report(
             json_data["band_stats"] = band_stats
         if pool_stats:
             json_data["pool_stats"] = pool_stats
+        if subsystem_stats:
+            json_data["subsystem_stats"] = subsystem_stats
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(json_data, f, indent=2, default=_json_default)
         paths["json"] = str(json_path)
@@ -153,6 +157,7 @@ def _render_markdown(
     spent_per_tier: dict,
     band_stats: dict | None = None,
     pool_stats: dict | None = None,
+    subsystem_stats: dict | None = None,
 ) -> str:
     lines = []
     lines.append(f"# Sourcehunt Report — {session_id}")
@@ -194,6 +199,16 @@ def _render_markdown(
         )
         lines.append(
             f"- **Duplicates removed:** {pool_stats.get('duplicates', 0)}"
+        )
+        lines.append("")
+
+    if subsystem_stats:
+        lines.append("## Subsystem Hunts")
+        lines.append(
+            f"- **Subsystems hunted:** {subsystem_stats.get('subsystems_hunted', 0)}"
+        )
+        lines.append(
+            f"- **Subsystem spend:** ${subsystem_stats.get('subsystem_spent_usd', 0):.2f}"
         )
         lines.append("")
 
@@ -246,6 +261,25 @@ def _render_markdown(
         if f.get("verifier_counter_argument"):
             lines.append("")
             lines.append(f"_Verifier counter-argument:_ {f['verifier_counter_argument']}")
+        if f.get("exploit_partial"):
+            lines.append("")
+            lines.append(
+                f"- **Exploit partial:** primitive={f.get('exploit_primitive_type', '?')}"
+            )
+        if f.get("exploit_mitigations_bypassed"):
+            lines.append(
+                f"- **Mitigations bypassed:** {', '.join(f['exploit_mitigations_bypassed'])}"
+            )
+        if f.get("exploit_mitigations_blocking"):
+            lines.append(
+                f"- **Mitigations blocking:** {', '.join(f['exploit_mitigations_blocking'])}"
+            )
+        if f.get("exploit_chained_findings"):
+            lines.append(
+                f"- **Chained findings:** {', '.join(f['exploit_chained_findings'])}"
+            )
+        if f.get("exploit_cost_usd"):
+            lines.append(f"- **Exploit cost:** ${f['exploit_cost_usd']:.2f}")
         lines.append("")
 
     return "\n".join(lines)

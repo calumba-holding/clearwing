@@ -42,6 +42,8 @@ class HunterContext:
     variant_sandboxes: dict = field(default_factory=dict)  # {variant_key: SandboxContainer}
     default_sanitizers: tuple = ("asan", "ubsan")
     findings_pool: object | None = None  # FindingsPool (avoiding circular import)
+    trajectory_dir: object | None = None  # Path override for transcript output
+    exploit_result: object | None = None  # ExploiterResult slot for exploit agent
 
     def get_sandbox_for_variant(
         self,

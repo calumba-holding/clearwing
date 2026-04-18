@@ -88,6 +88,30 @@ def add_parser(subparsers):
         help="Minimum file rank for entry-point sharding (default: 4)",
     )
     parser.add_argument(
+        "--subsystem-hunt",
+        action="store_true",
+        default=False,
+        dest="subsystem_hunt",
+        help="Enable cross-subsystem hunting after per-file hunts. "
+        "Auto-identifies subsystems from ranked files.",
+    )
+    parser.add_argument(
+        "--subsystem",
+        action="append",
+        default=[],
+        metavar="PATH",
+        dest="subsystem_paths",
+        help="Manually specify a subsystem directory to hunt (repeatable). "
+        "Implies --subsystem-hunt. Example: --subsystem net/ipv4/",
+    )
+    parser.add_argument(
+        "--no-per-file-hunt",
+        action="store_true",
+        default=False,
+        dest="no_per_file_hunt",
+        help="Skip per-file hunting; only run subsystem hunts.",
+    )
+    parser.add_argument(
         "--seed-corpus",
         default=None,
         dest="seed_corpus",
@@ -145,6 +169,14 @@ def add_parser(subparsers):
         "static_corroboration.",
     )
     parser.add_argument("--no-exploit", action="store_true", help="Skip the exploit-triage pass")
+    parser.add_argument(
+        "--exploit-budget",
+        choices=["standard", "deep", "campaign"],
+        default=None,
+        dest="exploit_budget",
+        help="Exploit development budget band (default: auto from --depth). "
+             "standard=$25/1hr, deep=$200/4hr, campaign=$2000/12hr.",
+    )
     parser.add_argument(
         "--no-variant-loop",
         action="store_true",
@@ -479,6 +511,12 @@ def handle(cli, args):
         cli.console.print(f"[bold]Watch complete. Processed {len(results)} commits.[/bold]")
         sys.exit(0)
 
+    if args.no_per_file_hunt and not args.subsystem_hunt and not args.subsystem_paths:
+        cli.console.print(
+            "[red]Error: --no-per-file-hunt requires --subsystem-hunt or --subsystem[/red]"
+        )
+        sys.exit(1)
+
     runner = SourceHuntRunner(
         repo_url=args.repo,
         branch=args.branch,
@@ -491,6 +529,7 @@ def handle(cli, args):
         output_formats=formats,
         no_verify=args.no_verify,
         no_exploit=args.no_exploit,
+        exploit_budget=args.exploit_budget,
         adversarial_verifier=not args.no_adversarial,
         adversarial_threshold=(
             None if args.adversarial_threshold == "always" else args.adversarial_threshold
@@ -518,6 +557,9 @@ def handle(cli, args):
             (["git_cve"] if args.seed_cves else []) or None
         ),
         enable_findings_pool=not args.no_findings_pool,
+        enable_subsystem_hunt=args.subsystem_hunt or bool(args.subsystem_paths),
+        subsystem_paths=args.subsystem_paths or None,
+        no_per_file_hunt=args.no_per_file_hunt,
     )
 
     cli.console.print(

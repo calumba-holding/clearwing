@@ -97,7 +97,7 @@ class PreprocessingEval:
         budget_per_config: float = 500.0,
         runs: int = 1,
         depth: str = "standard",
-        output_dir: str = "./eval-results",
+        output_dir: str | None = None,
         ground_truth_cves: list[str] | None = None,
     ):
         self._provider_manager = provider_manager
@@ -108,6 +108,10 @@ class PreprocessingEval:
         self._budget_per_config = budget_per_config
         self._runs = runs
         self._depth = depth
+        if output_dir is None:
+            from clearwing.core.config import default_results_dir
+
+            output_dir = default_results_dir("eval")
         self._output_dir = output_dir
         self._ground_truth_cves = ground_truth_cves or []
 

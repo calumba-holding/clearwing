@@ -88,7 +88,7 @@ class WorkflowEngine:
     - Progress tracking and queryable state
     """
 
-    CHECKPOINT_DIR = Path("~/.clearwing/workflows").expanduser()
+    CHECKPOINT_DIR: Path | None = None
 
     def __init__(
         self,
@@ -100,6 +100,11 @@ class WorkflowEngine:
         self._retry_policy = retry_policy or RetryPolicy()
         self._lock = threading.Lock()
         self._step_handlers: dict[str, Callable] = {}
+
+        if self.CHECKPOINT_DIR is None:
+            from clearwing.core.config import clearwing_home
+
+            self.CHECKPOINT_DIR = clearwing_home() / "workflows"
 
         if workflow_id:
             # Try to recover existing workflow
@@ -343,6 +348,10 @@ class WorkflowEngine:
     @classmethod
     def list_workflows(cls) -> list[dict]:
         """List all saved workflow checkpoints."""
+        if cls.CHECKPOINT_DIR is None:
+            from clearwing.core.config import clearwing_home
+
+            cls.CHECKPOINT_DIR = clearwing_home() / "workflows"
         results = []
         cls.CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
         for path in sorted(cls.CHECKPOINT_DIR.glob("*.json")):

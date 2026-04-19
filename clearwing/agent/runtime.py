@@ -151,8 +151,10 @@ class NativeAgentGraph:
         self.knowledge_graph = None
         if enable_knowledge_graph and capabilities.has("knowledge"):
             try:
+                from clearwing.core.config import clearwing_home
+
                 self.knowledge_graph = KnowledgeGraph(
-                    persist_path="~/.clearwing/knowledge_graph.json"
+                    persist_path=str(clearwing_home() / "knowledge_graph.json"),
                 )
             except Exception:
                 logger.warning("Failed to initialize KnowledgeGraph", exc_info=True)

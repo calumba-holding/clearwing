@@ -85,9 +85,13 @@ class AuthConfig:
 class AuthConfigLoader:
     """Loads authentication configs from YAML files."""
 
-    CONFIG_DIR = Path("~/.clearwing/auth").expanduser()
+    CONFIG_DIR: Path | None = None
 
     def __init__(self):
+        if self.CONFIG_DIR is None:
+            from clearwing.core.config import clearwing_home
+
+            self.CONFIG_DIR = clearwing_home() / "auth"
         self.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
     def load(self, path: str) -> AuthConfig:

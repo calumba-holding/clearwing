@@ -52,8 +52,8 @@ def add_parser(subparsers):
         default="standard", help="Hunt depth (default: standard)",
     )
     pp.add_argument(
-        "--output-dir", default="./eval-results",
-        help="Output directory (default: ./eval-results)",
+        "--output-dir", default=None,
+        help="Output directory (default: ./results/eval or ~/.clearwing/results/eval)",
     )
     pp.add_argument(
         "--ground-truth", nargs="*", default=None,
@@ -103,9 +103,13 @@ def handle(cli, args):
 
 
 def _handle_preprocessing(cli, args):
+    from ...core.config import default_results_dir
     from ...eval.metrics import format_eval_comparison
     from ...eval.preprocessing import PreprocessingEval
     from ...providers import ProviderManager, resolve_llm_endpoint
+
+    if args.output_dir is None:
+        args.output_dir = default_results_dir("eval")
 
     logging.basicConfig(
         level=logging.INFO, format="%(levelname)s: %(message)s", force=True,

@@ -35,8 +35,8 @@ def add_parser(subparsers):
         help="JSON file listing benchmark targets",
     )
     ossfuzz.add_argument(
-        "--output-dir", default="./bench-results",
-        help="Output directory for results (default: ./bench-results)",
+        "--output-dir", default=None,
+        help="Output directory for results (default: ./results/bench or ~/.clearwing/results/bench)",
     )
     ossfuzz.add_argument(
         "--max-parallel", type=int, default=4,
@@ -96,7 +96,11 @@ def _handle_ossfuzz(cli, args):
         load_corpus_dir,
         load_targets_file,
     )
+    from ...core.config import default_results_dir
     from ...providers import ProviderManager, resolve_llm_endpoint
+
+    if args.output_dir is None:
+        args.output_dir = default_results_dir("bench")
 
     logging.basicConfig(
         level=logging.INFO, format="%(levelname)s: %(message)s", force=True,

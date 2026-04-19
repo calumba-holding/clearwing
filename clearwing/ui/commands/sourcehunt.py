@@ -437,8 +437,8 @@ def add_parser(subparsers):
     )
     parser.add_argument(
         "--output-dir",
-        default="./sourcehunt-results",
-        help="Output directory (default: ./sourcehunt-results)",
+        default=None,
+        help="Output directory (default: ./results/sourcehunt or ~/.clearwing/results/sourcehunt)",
     )
     parser.add_argument(
         "--format",
@@ -452,9 +452,13 @@ def add_parser(subparsers):
 
 def handle(cli, args):
     """Run the sourcehunt pipeline."""
+    from ...core.config import default_results_dir
     from ...providers import ProviderManager, resolve_llm_endpoint
     from ...sourcehunt.pool import TierBudget
     from ...sourcehunt.runner import SourceHuntRunner
+
+    if args.output_dir is None:
+        args.output_dir = default_results_dir("sourcehunt")
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s", force=True)
 

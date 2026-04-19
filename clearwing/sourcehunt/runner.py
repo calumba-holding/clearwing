@@ -162,7 +162,7 @@ class SourceHuntRunner:
         budget_usd: float = 0.0,
         max_parallel: int = 8,
         tier_budget: TierBudget | None = None,
-        output_dir: str = "./sourcehunt-results",
+        output_dir: str | None = None,
         output_formats: list[str] | None = None,
         no_verify: bool = False,
         no_exploit: bool = False,
@@ -252,11 +252,7 @@ class SourceHuntRunner:
                 else b.subsystem_max_parallel
             )
             # Output params
-            output_dir = (
-                output_dir
-                if output_dir != "./sourcehunt-results"
-                else o.output_dir
-            )
+            output_dir = output_dir if output_dir is not None else (o.output_dir or None)
             output_formats = output_formats if output_formats is not None else o.output_formats
             export_disclosures = export_disclosures or o.export_disclosures
             disclosure_reporter_name = (
@@ -372,6 +368,10 @@ class SourceHuntRunner:
         self.budget_usd = budget_usd
         self.max_parallel = max_parallel
         self.tier_budget = tier_budget or TierBudget()
+        if output_dir is None:
+            from clearwing.core.config import default_results_dir
+
+            output_dir = default_results_dir("sourcehunt")
         self.output_dir = output_dir
         self.output_formats = output_formats or ["sarif", "markdown", "json"]
         self.no_verify = no_verify
@@ -1289,7 +1289,12 @@ class SourceHuntRunner:
             try:
                 from clearwing.data.knowledge import KnowledgeGraph
 
-                kg = KnowledgeGraph(persist_path="~/.clearwing/knowledge_graph.json", auto_save=True)
+                from clearwing.core.config import clearwing_home
+
+                kg = KnowledgeGraph(
+                    persist_path=str(clearwing_home() / "knowledge_graph.json"),
+                    auto_save=True,
+                )
             except Exception:
                 logger.debug("Could not import KnowledgeGraph", exc_info=True)
                 return

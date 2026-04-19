@@ -46,8 +46,9 @@ logger = logging.getLogger(__name__)
 
 
 def default_store_path() -> Path:
-    home = os.environ.get("CLEARWING_HOME") or os.path.expanduser("~/.clearwing")
-    return Path(home) / "sourcehunt" / "mechanisms.jsonl"
+    from clearwing.core.config import clearwing_home
+
+    return clearwing_home() / "sourcehunt" / "mechanisms.jsonl"
 
 
 # --- Mechanism data class ---------------------------------------------------

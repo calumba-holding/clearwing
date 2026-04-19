@@ -48,7 +48,9 @@ OPENAI_CODEX_DEFAULT_MODEL = "gpt-5.2"
 OPENAI_CODEX_OAUTH_CONFIG_KEY = "oauth.openai_codex"
 OPENAI_AUTH_JWT_CLAIM_PATH = "https://api.openai.com/auth"
 
-AUTH_DIR = Path.home() / ".clearwing" / "auth"
+from clearwing.core.config import clearwing_home
+
+AUTH_DIR = clearwing_home() / "auth"
 
 
 @dataclass(frozen=True)

@@ -22,7 +22,9 @@ def query_knowledge_graph(query: str) -> str:
         Formatted query results.
     """
     try:
-        kg = KnowledgeGraph(persist_path="~/.clearwing/knowledge_graph.json")
+        from clearwing.core.config import clearwing_home
+
+        kg = KnowledgeGraph(persist_path=str(clearwing_home() / "knowledge_graph.json"))
         return kg.query(query)
     except Exception as e:
         return f"Error querying knowledge graph: {e}"

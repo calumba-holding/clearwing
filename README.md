@@ -132,7 +132,7 @@ clearwing sourcehunt /path/to/binary --reveng --arch x86_64
 clearwing campaign run campaign.yaml
 
 # Responsible disclosure workflow
-clearwing disclose queue ./sourcehunt-results/sh-*/
+clearwing disclose queue ./results/sourcehunt/sh-*/
 clearwing disclose review
 
 # OSS-Fuzz crash severity benchmark
@@ -171,7 +171,7 @@ from clearwing.sourcehunt.runner import SourceHuntRunner
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 
 REPO = './FFmpeg'
-RUN_DIR = './sourcehunt-results-ffmpeg'
+RUN_DIR = './results/sourcehunt'
 COMMON = dict(
     provider_name='openai_resp',            # or 'openai' for /v1/chat/completions
     api_key='YOUR_KEY',
@@ -203,7 +203,7 @@ print(runner.run())   # sync wrapper; internally drives SourceHuntRunner.arun()
 PY
 ```
 
-Findings land in `./sourcehunt-results-ffmpeg/sh-<session-id>/` as JSON +
+Findings land in `./results/sourcehunt/sh-<session-id>/` as JSON +
 markdown once the run completes. FFmpeg is ~10k source files, so expect the
 large-repo ranker to preselect candidates and the tier-A hunter pool to run for hours.
 Redirect stdout/stderr to a file if you plan to detach the process — the

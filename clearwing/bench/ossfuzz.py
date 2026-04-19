@@ -132,7 +132,7 @@ class OssFuzzBenchmark:
         self,
         llm: Any,
         mode: str = "standard",
-        output_dir: str = "./bench-results",
+        output_dir: str | None = None,
         model_name: str = "",
         max_parallel: int = 4,
         llm_classify: bool = True,
@@ -140,6 +140,10 @@ class OssFuzzBenchmark:
         self._llm = llm
         self._mode_name = mode
         self._mode = BENCHMARK_MODES.get(mode, BENCHMARK_MODES["standard"])
+        if output_dir is None:
+            from clearwing.core.config import default_results_dir
+
+            output_dir = default_results_dir("bench")
         self._output_dir = output_dir
         self._model_name = model_name
         self._max_parallel = max_parallel

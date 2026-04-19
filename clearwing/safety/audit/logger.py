@@ -37,9 +37,13 @@ class AuditLogger:
     - agents.jsonl — per-agent activity
     """
 
-    BASE_DIR: Path = Path("~/.clearwing/audit").expanduser()
+    BASE_DIR: Path | None = None
 
     def __init__(self, session_id: str):
+        if self.BASE_DIR is None:
+            from clearwing.core.config import clearwing_home
+
+            self.BASE_DIR = clearwing_home() / "audit"
         self.session_id = session_id
         self._dir = self.BASE_DIR / session_id
         self._dir.mkdir(parents=True, exist_ok=True)

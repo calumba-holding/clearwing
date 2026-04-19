@@ -125,8 +125,9 @@ _DAY = 86400
 
 
 def _default_db_path() -> Path:
-    home = os.environ.get("CLEARWING_HOME") or os.path.expanduser("~/.clearwing")
-    return Path(home) / "sourcehunt" / "disclosures.db"
+    from clearwing.core.config import clearwing_home
+
+    return clearwing_home() / "sourcehunt" / "disclosures.db"
 
 
 def _compute_priority(finding: dict) -> float:

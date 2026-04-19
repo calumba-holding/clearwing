@@ -15,7 +15,7 @@ class SkillLoader:
     """Discovers, searches, and loads vulnerability skill files."""
 
     BUILTIN_DIR: Path = Path(__file__).parent / "vulnerabilities"
-    CUSTOM_DIR: Path = Path("~/.clearwing/skills/custom").expanduser()
+    CUSTOM_DIR: Path | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -28,6 +28,10 @@ class SkillLoader:
         extracted from the first paragraph of each file.
         """
         skills: list[SkillInfo] = []
+        if self.CUSTOM_DIR is None:
+            from clearwing.core.config import clearwing_home
+
+            self.CUSTOM_DIR = clearwing_home() / "skills" / "custom"
         for directory in (self.BUILTIN_DIR, self.CUSTOM_DIR):
             if not directory.is_dir():
                 continue

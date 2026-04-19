@@ -27,7 +27,9 @@ class ArtifactPolicy:
 
 
 def _default_base_dir() -> Path:
-    return Path.home() / ".clearwing" / "sourcehunt" / "artifacts"
+    from clearwing.core.config import clearwing_home
+
+    return clearwing_home() / "sourcehunt" / "artifacts"
 
 
 class ArtifactStore:

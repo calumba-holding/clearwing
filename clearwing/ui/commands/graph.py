@@ -20,7 +20,9 @@ def handle(cli, args):
     from ...data.knowledge.graph import KnowledgeGraph
     from ...reporting.report_generator import ReportGenerator
 
-    persist_path = args.path or "~/.clearwing/knowledge_graph.json"
+    from clearwing.core.config import clearwing_home
+
+    persist_path = args.path or str(clearwing_home() / "knowledge_graph.json")
     kg = KnowledgeGraph(persist_path=persist_path)
 
     if kg._graph.number_of_nodes() == 0:

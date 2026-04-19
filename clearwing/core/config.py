@@ -6,6 +6,36 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 
 
+def clearwing_home() -> Path:
+    """Return the Clearwing home directory.
+
+    Resolution order:
+      1. ``CLEARWING_HOME`` environment variable
+      2. ``~/.clearwing``
+    """
+    raw = os.environ.get("CLEARWING_HOME")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return Path.home() / ".clearwing"
+
+
+def _is_dev_checkout() -> bool:
+    """True when running from a git checkout (developer install)."""
+    return (Path(__file__).resolve().parent.parent.parent / ".git").is_dir()
+
+
+def default_results_dir(subdir: str) -> str:
+    """Return the default output directory for a pipeline.
+
+    In a dev checkout results land in ``./results/<subdir>`` (relative to
+    cwd).  For a PyPI install they go to ``~/.clearwing/results/<subdir>``
+    so nothing is written into an arbitrary working directory.
+    """
+    if _is_dev_checkout():
+        return f"./results/{subdir}"
+    return str(clearwing_home() / "results" / subdir)
+
+
 @dataclass
 class SourceHuntLimits:
     """Centralized limits for the sourcehunt pipeline.
@@ -105,7 +135,7 @@ class Config:
     #: Default path searched when no explicit config_file is passed.
     #: Users can put provider / scan / exploitation settings here and
     #: they persist across sessions.
-    DEFAULT_CONFIG_PATH = Path.home() / ".clearwing" / "config.yaml"
+    DEFAULT_CONFIG_PATH = clearwing_home() / "config.yaml"
 
     def __init__(self, config_file: str | None = None):
         self.config = self.DEFAULT_CONFIG.copy()

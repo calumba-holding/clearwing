@@ -43,7 +43,11 @@ class SemanticMemory:
     _model: object | None = None
     _model_checked: bool = False
 
-    def __init__(self, db_path: str = "~/.clearwing/memory.db") -> None:
+    def __init__(self, db_path: str | None = None) -> None:
+        if db_path is None:
+            from clearwing.core.config import clearwing_home
+
+            db_path = str(clearwing_home() / "memory.db")
         self._db_path = Path(db_path).expanduser()
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()

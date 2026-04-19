@@ -35,10 +35,14 @@ class CalibrationRecord:
 class CalibrationStore:
     """Append-only JSONL store for severity calibration records."""
 
-    DEFAULT_PATH = Path("~/.clearwing/sourcehunt/calibration.jsonl")
+    @staticmethod
+    def _default_path() -> Path:
+        from clearwing.core.config import clearwing_home
+
+        return clearwing_home() / "sourcehunt" / "calibration.jsonl"
 
     def __init__(self, path: Path | str | None = None):
-        self._path = Path(path or self.DEFAULT_PATH).expanduser()
+        self._path = Path(path) if path else self._default_path()
 
     def append(self, record: CalibrationRecord) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)

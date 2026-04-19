@@ -46,7 +46,7 @@ clearwing sourcehunt <repo_url_or_path>
   [--model MODEL_NAME]        # override per-task model selection
   [--base-url URL]            # OpenAI-compat endpoint (OpenRouter, Ollama, ...)
   [--api-key KEY]             # credential for --base-url
-  [--output-dir DIR]          # default: ./sourcehunt-results
+  [--output-dir DIR]          # default: ./results/sourcehunt (dev) or ~/.clearwing/results/sourcehunt
   [--format sarif markdown json all]  # default: all
 ```
 
@@ -283,7 +283,7 @@ automatic pause/resume, and aggregate reporting.
 clearwing bench ossfuzz                    # OSS-Fuzz crash severity benchmark
   --corpus-dir DIR | --targets-file FILE   # target source (one required)
   [--mode quick|standard|full|deep]        # default: standard
-  [--output-dir DIR]                       # default: ./bench-results
+  [--output-dir DIR]                       # default: ./results/bench
   [--max-parallel N]                       # default: 4
   [--no-llm-classify]                      # skip LLM tier 3-5 classification
   [--model MODEL] [--base-url URL] [--api-key KEY]
@@ -306,7 +306,7 @@ clearwing eval preprocessing              # A/B test preprocessing pipeline
   [--budget-per-config USD]                # default: $500
   [--runs N]                               # runs per config (default: 1)
   [--depth quick|standard|deep]            # default: standard
-  [--output-dir DIR]                       # default: ./eval-results
+  [--output-dir DIR]                       # default: ./results/eval
   [--ground-truth CVE-ID...]               # known CVEs for recall
   [--model MODEL] [--base-url URL] [--api-key KEY]
   [--format table|json|markdown]

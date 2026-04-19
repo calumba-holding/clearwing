@@ -77,7 +77,7 @@ class NdayPipeline:
         sandbox_factory: Any = None,
         budget_band: str = "deep",
         project: str = "",
-        output_dir: str = "./sourcehunt-results",
+        output_dir: str | None = None,
     ):
         self._llm = llm
         self._repo_path = repo_path
@@ -85,6 +85,10 @@ class NdayPipeline:
         self._sandbox_factory = sandbox_factory
         self._budget_band = budget_band
         self._project = project
+        if output_dir is None:
+            from clearwing.core.config import default_results_dir
+
+            output_dir = default_results_dir("sourcehunt")
         self._output_dir = output_dir
 
     async def arun(self, candidates: list[NdayCandidate]) -> NdayPipelineResult:

@@ -41,7 +41,7 @@ class CommitMonitorConfig:
     branch: str = "main"
     poll_interval_seconds: int = 300  # default: 5 minutes
     max_iterations: int = 0  # 0 = infinite (until cancelled)
-    output_dir: str = "./sourcehunt-results/watch"
+    output_dir: str = ""
     depth: str = "standard"
     budget_usd: float = 0.0
     on_finding: Callable | None = None
@@ -72,6 +72,10 @@ class CommitMonitor:
     """Polls a git repo for new commits and runs sourcehunt on each change."""
 
     def __init__(self, config: CommitMonitorConfig):
+        if not config.output_dir:
+            from clearwing.core.config import default_results_dir
+
+            config.output_dir = default_results_dir("sourcehunt") + "/watch"
         self.config = config
         self._cancelled = False
         self._last_seen_sha: str | None = None

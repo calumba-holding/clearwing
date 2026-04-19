@@ -275,7 +275,9 @@ def _invoke_test(endpoint) -> DoctorCheck:
 def _check_filesystem(cli) -> DoctorSection:
     section = DoctorSection("Filesystem")
 
-    cw_dir = Path.home() / ".clearwing"
+    from clearwing.core.config import clearwing_home
+
+    cw_dir = clearwing_home()
     if not cw_dir.exists():
         try:
             cw_dir.mkdir(parents=True, exist_ok=True)

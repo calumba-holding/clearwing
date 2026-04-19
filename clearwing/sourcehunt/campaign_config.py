@@ -48,10 +48,16 @@ class CampaignConfig:
     diminishing_returns_threshold: float = 0.02
     triage_backlog_limit: int = 100
     checkpoint_interval_seconds: int = 300
-    output_dir: str = "./campaign-results"
+    output_dir: str = ""
     output_formats: list[str] = field(
         default_factory=lambda: ["sarif", "markdown", "json"],
     )
+
+    def __post_init__(self):
+        if not self.output_dir:
+            from clearwing.core.config import default_results_dir
+
+            self.output_dir = default_results_dir("campaign")
 
 
 def load_campaign_config(path: str | Path) -> CampaignConfig:
@@ -109,7 +115,7 @@ def load_campaign_config(path: str | Path) -> CampaignConfig:
         checkpoint_interval_seconds=int(
             raw.get("checkpoint_interval_seconds", 300),
         ),
-        output_dir=raw.get("output_dir", "./campaign-results"),
+        output_dir=raw.get("output_dir", ""),
         output_formats=raw.get(
             "output_formats", ["sarif", "markdown", "json"],
         ),

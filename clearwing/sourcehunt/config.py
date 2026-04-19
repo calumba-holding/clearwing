@@ -39,7 +39,7 @@ class BudgetConfig:
 class OutputConfig:
     """Report output settings."""
 
-    output_dir: str = "./sourcehunt-results"
+    output_dir: str = ""
     output_formats: list[str] = field(default_factory=lambda: ["sarif", "markdown", "json"])
     export_disclosures: bool = False
     disclosure_reporter_name: str = "(your name)"

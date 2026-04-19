@@ -27,7 +27,7 @@ def hunt_source_code(
     branch: str = "main",
     depth: str = "quick",
     budget_usd: float = 0.0,
-    output_dir: str = "./sourcehunt-results",
+    output_dir: str | None = None,
 ) -> str:
     """Run the Clearwing source-code vulnerability hunting pipeline against a repo.
 

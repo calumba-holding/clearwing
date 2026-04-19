@@ -92,7 +92,7 @@ class RevengPipeline:
         binary_path: str = "",
         arch: str = "x86_64",
         budget_band: str = "deep",
-        output_dir: str = "./sourcehunt-results",
+        output_dir: str | None = None,
         project_name: str = "",
         sandbox_factory: Any = None,
     ):
@@ -100,6 +100,10 @@ class RevengPipeline:
         self._binary_path = binary_path
         self._arch = arch
         self._budget_band = budget_band
+        if output_dir is None:
+            from clearwing.core.config import default_results_dir
+
+            output_dir = default_results_dir("sourcehunt")
         self._output_dir = output_dir
         self._project_name = project_name or os.path.basename(binary_path)
         self._sandbox_factory = sandbox_factory

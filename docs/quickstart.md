@@ -104,7 +104,8 @@ clearwing sourcehunt /path/to/repo \
     --auto-patch
 ```
 
-Output lives in `./sourcehunt-results/<session_id>/` — SARIF for
+Output lives in `./results/sourcehunt/<session_id>/` (dev checkout) or
+`~/.clearwing/results/sourcehunt/<session_id>/` (PyPI install) — SARIF for
 IDE integration, markdown for humans, JSON for programmatic consumers.
 
 ## Interactive agent

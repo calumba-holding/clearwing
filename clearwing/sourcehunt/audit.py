@@ -15,7 +15,9 @@ from pathlib import Path
 
 
 def _default_log_path() -> Path:
-    return Path.home() / ".clearwing" / "sourcehunt" / "security_audit.jsonl"
+    from clearwing.core.config import clearwing_home
+
+    return clearwing_home() / "sourcehunt" / "security_audit.jsonl"
 
 
 @dataclass

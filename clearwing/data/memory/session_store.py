@@ -62,9 +62,10 @@ def _datetime_decoder(dct: dict) -> dict:
 class SessionStore:
     """Persists Clearwing sessions as JSON files on disk."""
 
-    BASE_DIR: Path = Path("~/.clearwing/sessions").expanduser()
-
     def __init__(self) -> None:
+        from clearwing.core.config import clearwing_home
+
+        self.BASE_DIR = clearwing_home() / "sessions"
         self.BASE_DIR.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------

@@ -37,8 +37,9 @@ def _trajectory_base_dir() -> Path:
     raw = os.environ.get("CLEARWING_SOURCEHUNT_TRACE_DIR")
     if raw:
         return Path(raw).expanduser()
-    home = os.environ.get("CLEARWING_HOME") or os.path.expanduser("~/.clearwing")
-    return Path(home) / "sourcehunt" / "trajectories"
+    from clearwing.core.config import clearwing_home
+
+    return clearwing_home() / "sourcehunt" / "trajectories"
 
 
 def _sanitize_path_component(value: str) -> str:

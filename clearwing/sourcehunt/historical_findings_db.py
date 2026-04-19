@@ -43,8 +43,9 @@ CREATE INDEX IF NOT EXISTS idx_file ON findings(file);
 
 
 def _default_db_path() -> Path:
-    home = os.environ.get("CLEARWING_HOME") or os.path.expanduser("~/.clearwing")
-    return Path(home) / "sourcehunt" / "historical_findings.db"
+    from clearwing.core.config import clearwing_home
+
+    return clearwing_home() / "sourcehunt" / "historical_findings.db"
 
 
 class HistoricalFindingsDB:

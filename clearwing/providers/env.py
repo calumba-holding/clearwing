@@ -238,7 +238,9 @@ def _load_default_config_provider() -> dict[str, Any]:
     to avoid a circular import (core → yaml is fine; providers → core
     would tangle the two packages).
     """
-    config_path = Path.home() / ".clearwing" / "config.yaml"
+    from clearwing.core.config import clearwing_home
+
+    config_path = clearwing_home() / "config.yaml"
     if not config_path.exists():
         return {}
     try:

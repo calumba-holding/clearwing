@@ -83,7 +83,9 @@ def _build_report_document(finding: dict) -> str:
 
 
 def _default_log_path() -> Path:
-    return Path.home() / ".clearwing" / "sourcehunt" / "commitments.jsonl"
+    from clearwing.core.config import clearwing_home
+
+    return clearwing_home() / "sourcehunt" / "commitments.jsonl"
 
 
 class CommitmentLog:

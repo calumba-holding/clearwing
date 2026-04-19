@@ -2,7 +2,8 @@
 
 ```
 clearwing [-h] {scan,report,history,config,interactive,graph,sessions,
-                ci,parallel,mcp,operate,webui,sourcehunt} ...
+                ci,parallel,mcp,operate,webui,sourcehunt,disclose,
+                campaign,bench,eval} ...
 ```
 
 Every subcommand supports `-h` / `--help` for flag-level details.
@@ -60,6 +61,116 @@ Depths:
 - **`deep`** — adds the crash-first harness generator (libFuzzer,
   30s per file) and enables auto-patch mode. Most expensive in both
   wall time and tokens.
+
+### `sourcehunt --nday` — N-day exploit pipeline
+
+```bash
+clearwing sourcehunt <repo_url_or_path>
+  --nday                          # enable N-day pipeline
+  [--cve-list CVE-2024-1234,...]  # specific CVEs to target
+  [--recent-cves N]               # fetch N most recent CVEs for the project
+  [--nday-budget standard|deep|campaign]
+  [--patch-commit SHA]            # commit that patches the vuln
+```
+
+Builds the vulnerable version of a project, develops working exploits
+for known CVEs, and validates against the patched version. Uses the
+agentic exploiter with sanitizer instrumentation.
+
+### `sourcehunt --reveng` — reverse engineering pipeline
+
+```bash
+clearwing sourcehunt <binary_path>
+  --reveng                        # enable reverse engineering pipeline
+  [--arch x86_64]                 # target architecture (default: x86_64)
+  [--reveng-budget deep|campaign] # budget band (default: deep)
+```
+
+Decompiles a closed-source ELF binary via Ghidra headless, reconstructs
+plausible source code with an LLM, then hunts vulnerabilities using
+hybrid source + binary validation (GDB against the original binary).
+
+## `disclose` — responsible disclosure workflow
+
+```bash
+clearwing disclose queue <results_dirs...>    # queue findings for review
+clearwing disclose review                     # show next finding for review
+clearwing disclose validate <finding_id>      # approve for disclosure
+clearwing disclose reject <finding_id>        # reject finding
+clearwing disclose send <finding_id>          # mark as sent to vendor
+clearwing disclose status                     # dashboard of all findings
+clearwing disclose timeline [--finding-id ID] # show/manage disclosure timelines
+clearwing disclose verify <finding_id>        # verify SHA-3 commitment
+clearwing disclose commitments [--format json|markdown] # list all commitments
+```
+
+Human-in-the-loop validation workflow. Generates pre-filled MITRE CVE
+request and HackerOne templates. Tracks disclosure timelines with
+60/75/90-day alerts. SHA-3 cryptographic commitments prove discovery
+priority without revealing vulnerability details.
+
+## `campaign` — campaign-scale orchestration
+
+```bash
+clearwing campaign run <config.yaml>       # start a campaign
+  [--dry-run]                              # validate config, show plan
+clearwing campaign status <config.yaml>    # progress dashboard
+clearwing campaign pause <config.yaml>     # pause after current files
+clearwing campaign resume <config.yaml>    # resume from checkpoint
+clearwing campaign report <config.yaml>    # aggregate report
+  [--format sarif|markdown|json|all]
+```
+
+Runs sourcehunt across many repositories from a single YAML config.
+Features shared budget tracking, per-project checkpointing,
+automatic pause/resume, and aggregate reporting.
+
+## `bench` — benchmarking tools
+
+```bash
+clearwing bench ossfuzz                    # OSS-Fuzz crash severity benchmark
+  --corpus-dir DIR | --targets-file FILE   # target source (one required)
+  [--mode quick|standard|full|deep]        # default: standard
+  [--output-dir DIR]                       # default: ./bench-results
+  [--max-parallel N]                       # default: 4
+  [--no-llm-classify]                      # skip LLM tier 3-5 classification
+  [--model MODEL] [--base-url URL] [--api-key KEY]
+
+clearwing bench compare <file_a> <file_b>  # compare two result files
+  [--format table|json|markdown]
+```
+
+5-tier crash severity ladder benchmark (tier 0 = no crash through
+tier 5 = full control flow hijack). Modes control scale: `quick`
+(100 targets), `standard` (1000), `full` (7000), `deep` (100 x 10 runs).
+
+## `eval` — evaluation and A/B testing
+
+```bash
+clearwing eval preprocessing              # A/B test preprocessing pipeline
+  --project <repo_url_or_path>
+  [--commit SHA]                           # checkout specific commit
+  [--configs glasswing_minimal,sourcehunt_full,glasswing_plus_crashes]
+  [--budget-per-config USD]                # default: $500
+  [--runs N]                               # runs per config (default: 1)
+  [--depth quick|standard|deep]            # default: standard
+  [--output-dir DIR]                       # default: ./eval-results
+  [--ground-truth CVE-ID...]               # known CVEs for recall
+  [--model MODEL] [--base-url URL] [--api-key KEY]
+  [--format table|json|markdown]
+
+clearwing eval compare <file_a> <file_b>   # compare two eval results
+  [--format table|json|markdown]
+```
+
+Runs the sourcehunt pipeline under different configurations for the
+same (project, model, budget) triple. Compares: findings verified,
+false positive rate, cost per finding, CWE diversity. Configurations:
+
+- **glasswing_minimal** — unconstrained prompt, no preprocessing
+- **sourcehunt_full** — specialist prompts, full preprocessing
+  (callgraph + taint + Semgrep + specialist routing)
+- **glasswing_plus_crashes** — minimal + seeded harness crashes
 
 ## `interactive` — ReAct-loop chat session
 

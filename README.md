@@ -26,6 +26,23 @@ Clearwing is a dual-mode offensive-security tool:
   evidence levels
   (`suspicion → static_corroboration → crash_reproduced →
   root_cause_explained → exploit_demonstrated → patch_validated`).
+- **N-day exploit pipeline** — given CVE IDs, builds the
+  vulnerable version, develops working exploits, and validates
+  against the patched version to confirm the fix.
+- **Reverse engineering pipeline** — decompiles closed-source
+  ELF binaries via Ghidra, reconstructs plausible source with an
+  LLM, then hunts vulnerabilities using a hybrid source + binary
+  validation approach.
+- **Campaign orchestration** — runs sourcehunt across dozens or
+  hundreds of repositories from a single YAML config with shared
+  budget, checkpoint/resume, and aggregate reporting.
+- **Responsible disclosure** — human-in-the-loop validation
+  workflow with MITRE/HackerOne template generation, SHA-3
+  cryptographic commitments for provable priority, timeline
+  tracking, and batched disclosure.
+- **Benchmarking & evaluation** — OSS-Fuzz crash severity
+  ladder for model comparison, and an A/B testing framework for
+  measuring whether preprocessing helps or hurts finding quality.
 
 **Authorized use only.** Clearwing is a dual-use offensive-security
 tool. Run it only against targets you own or have explicit written
@@ -98,6 +115,27 @@ clearwing scan 192.168.1.10 -p 22,80,443 --detect-services
 # adversarial verifier, mechanism memory, variant loop)
 clearwing sourcehunt https://github.com/example/project \
     --depth standard
+
+# N-day exploit pipeline — build and exploit known CVEs
+clearwing sourcehunt https://github.com/example/project \
+    --nday --cve-list CVE-2024-1234,CVE-2024-5678
+
+# Reverse engineering — hunt vulnerabilities in closed-source binaries
+clearwing sourcehunt /path/to/binary --reveng --arch x86_64
+
+# Campaign-scale orchestration across multiple projects
+clearwing campaign run campaign.yaml
+
+# Responsible disclosure workflow
+clearwing disclose queue ./sourcehunt-results/sh-*/
+clearwing disclose review
+
+# OSS-Fuzz crash severity benchmark
+clearwing bench ossfuzz --corpus-dir ./oss-fuzz-projects --mode standard
+
+# A/B test whether preprocessing helps or hurts
+clearwing eval preprocessing --project https://github.com/example/project \
+    --configs glasswing_minimal,sourcehunt_full --runs 3
 
 # Interactive ReAct chat with the full tool set
 clearwing interactive
@@ -187,10 +225,16 @@ runner's own artifacts are only written at the end.
           └───────────┬─────────────────┘
                       ▼
 ┌───────────────────────────────────────────────────────────────┐
+│ N-day pipeline │ Reveng pipeline │ Campaign orchestrator      │
+│ Disclosure workflow + SHA-3 commitments                       │
+├───────────────────────────────────────────────────────────────┤
 │                    Shared substrate                          │
 │  Finding dataclass  │  capabilities probe  │  sandbox layer  │
 │  knowledge graph    │  episodic memory     │  event bus      │
 │  telemetry          │  guardrails + audit  │  CVSS scoring   │
+│  artifact store     │  behavior monitor    │  seccomp        │
+├───────────────────────────────────────────────────────────────┤
+│  Bench: OSS-Fuzz severity ladder  │  Eval: preprocessing A/B │
 └───────────────────────────────────────────────────────────────┘
 ```
 

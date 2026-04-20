@@ -126,6 +126,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   prefixes with `v` only when the value starts with a digit, and
   parenthesises non-version labels (e.g. `HTTP (Vercel)`,
   `HTTP v2.4.41`).
+- **Windows sourcehunt path normalization now stays POSIX-stable**.
+  Repo-relative paths emitted by discovery, preprocessing, callgraph,
+  and variant-search flows now normalize `os.path.relpath(...)`
+  outputs to forward-slash paths and handle leading-slash sandbox
+  inputs safely on Windows, so sourcehunt path matching stays aligned
+  with the existing fixtures and `/workspace/...` expectations.
 - **`clearwing config --set-provider` config.yaml bloat regression**.
   The prior `cli.config.save()` path dumped the full merged default
   config (including the 1024-port scanning defaults) into

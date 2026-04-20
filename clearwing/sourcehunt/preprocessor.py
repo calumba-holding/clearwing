@@ -302,7 +302,7 @@ class Preprocessor:
             except OSError:
                 continue
 
-            rel_path = os.path.relpath(abs_path, repo_path)
+            rel_path = Path(os.path.relpath(abs_path, repo_path)).as_posix()
 
             tags: list[FileTag] = []
             if self.tag_files:

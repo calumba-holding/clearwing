@@ -22,6 +22,7 @@ import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from clearwing.llm import AsyncLLMClient
@@ -211,7 +212,7 @@ class VariantSearcher:
             dirnames[:] = [d for d in dirnames if d not in self.SKIP_DIRS]
             for fname in filenames:
                 full_path = os.path.join(dirpath, fname)
-                rel = os.path.relpath(full_path, repo_path)
+                rel = Path(os.path.relpath(full_path, repo_path)).as_posix()
                 if rel in exclude_paths:
                     continue
                 try:

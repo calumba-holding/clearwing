@@ -16,6 +16,7 @@ import fnmatch
 import logging
 import os
 import re
+from pathlib import Path
 
 from clearwing.llm import NativeToolSpec
 
@@ -34,19 +35,22 @@ def _normalize_path(repo_path: str, path: str) -> str:
     Returns a repo-relative path (no leading slash). Caller can prepend
     repo_path or '/workspace' depending on context.
     """
-    # Strip leading slash
-    if path.startswith("/"):
-        path = path.lstrip("/")
+    repo_root = os.path.abspath(repo_path)
+    # Strip a leading slash/backslash so POSIX-looking inputs like
+    # "/foo/bar" still resolve inside the repo on Windows.
+    if path.startswith(("/", "\\")):
+        path = path.lstrip("/\\")
     # Resolve and check it's still under repo_path
-    abs_path = os.path.abspath(os.path.join(repo_path, path))
-    common = os.path.commonpath([abs_path, repo_path])
-    if common != os.path.abspath(repo_path):
+    abs_path = os.path.abspath(os.path.join(repo_root, path))
+    common = os.path.commonpath([abs_path, repo_root])
+    if common != repo_root:
         raise ValueError(f"path escapes repo: {path}")
-    return os.path.relpath(abs_path, repo_path)
+    return Path(os.path.relpath(abs_path, repo_root)).as_posix()
 
 
 def _container_path(rel_path: str) -> str:
     """Turn a repo-relative path into the path inside the /workspace mount."""
+    rel_path = rel_path.replace("\\", "/")
     return f"/workspace/{rel_path}".replace("//", "/")
 
 
@@ -69,7 +73,7 @@ def _parse_rg_output(stdout: str, default_file: str = "") -> list[dict]:
             continue
         matches.append(
             {
-                "file": path.replace("/workspace/", "", 1),
+                "file": path.replace("/workspace/", "", 1).replace("\\", "/"),
                 "line_number": ln,
                 "matched_text": text.rstrip(),
             }
@@ -105,7 +109,7 @@ def _grep_python_fallback(
 
     for full in candidate_files:
         fname = os.path.basename(full)
-        rel_file = os.path.relpath(full, repo_path)
+        rel_file = Path(os.path.relpath(full, repo_path)).as_posix()
         if file_glob and not (
             fnmatch.fnmatch(rel_file, file_glob)
             or fnmatch.fnmatch(fname, file_glob)
@@ -193,9 +197,13 @@ def build_discovery_tools(ctx: HunterContext) -> list:
             if depth >= max_depth:
                 dirnames[:] = []
             for d in dirnames:
-                out.append(os.path.relpath(os.path.join(dirpath, d), ctx.repo_path) + "/")
+                out.append(
+                    Path(os.path.relpath(os.path.join(dirpath, d), ctx.repo_path)).as_posix() + "/"
+                )
             for f in filenames:
-                out.append(os.path.relpath(os.path.join(dirpath, f), ctx.repo_path))
+                out.append(
+                    Path(os.path.relpath(os.path.join(dirpath, f), ctx.repo_path)).as_posix()
+                )
             if len(out) > 500:
                 out.append("... (truncated)")
                 return out

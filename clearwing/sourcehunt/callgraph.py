@@ -128,9 +128,7 @@ class CallGraph:
     functions: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
     calls_out: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
     defined_in: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
-    function_info: dict[str, list[FunctionInfo]] = field(
-        default_factory=lambda: defaultdict(list)
-    )
+    function_info: dict[str, list[FunctionInfo]] = field(default_factory=lambda: defaultdict(list))
 
     def callers_of_file(self, target_file: str) -> set[str]:
         """Return the set of files that call any function defined in target_file."""
@@ -284,7 +282,7 @@ class CallGraphBuilder:
 
         parser = self._get_parser(lang_name)
         tree = parser.parse(source)
-        rel_path = os.path.relpath(abs_path, repo_path)
+        rel_path = Path(os.path.relpath(abs_path, repo_path)).as_posix()
 
         def_types = _FUNCTION_DEF_NODE_TYPES.get(lang_name, set())
         call_types = _FUNCTION_CALL_NODE_TYPES.get(lang_name, set())
@@ -299,11 +297,13 @@ class CallGraphBuilder:
                 if name:
                     graph.functions[rel_path].add(name)
                     graph.defined_in[name].add(rel_path)
-                    graph.function_info[rel_path].append(FunctionInfo(
-                        name=name,
-                        start_line=node.start_point[0] + 1,
-                        end_line=node.end_point[0] + 1,
-                    ))
+                    graph.function_info[rel_path].append(
+                        FunctionInfo(
+                            name=name,
+                            start_line=node.start_point[0] + 1,
+                            end_line=node.end_point[0] + 1,
+                        )
+                    )
 
             elif node.type in call_types:
                 name = self._extract_call_name(node, lang_name, source)

@@ -5,6 +5,7 @@ import json
 import logging
 import random
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -197,7 +198,7 @@ class AsyncLLMClient:
         tools: list[NativeToolSpec] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-        on_text_delta: Any = None,
+        on_text_delta: Callable[[str], None] | None = None,
     ) -> ChatResponse:
         """Like ``achat`` but streams text deltas via *on_text_delta*.
 
@@ -233,7 +234,7 @@ class AsyncLLMClient:
             client = self._build_client(Client)
             stream = await client.astream_chat(self.model_name, request, options)
             async for event in stream:
-                if event.content and on_text_delta is not None:
+                if event.content:
                     on_text_delta(event.content)
                 if event.end is not None:
                     return event.end

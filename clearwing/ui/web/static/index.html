@@ -77,7 +77,7 @@
   <label>Target (IP / hostname / CIDR)</label>
   <input id="target" placeholder="e.g. 192.168.1.0/24">
   <label>Model</label>
-  <input id="model" value="MiniMax-M2.7">
+  <input id="model" placeholder="e.g. claude-sonnet-4-6">
   <label>Base URL</label>
   <input id="base-url" placeholder="https://api.minimax.io/v1">
   <label>API Key</label>
@@ -112,10 +112,27 @@ function addMessage(text, cls) {
   return el;
 }
 
-function addHtml(html, cls) {
+function addApproval(prompt) {
   const el = document.createElement('div');
-  el.className = 'msg ' + cls;
-  el.innerHTML = html;
+  el.className = 'msg approval';
+  const label = document.createElement('div');
+  label.className = 'label';
+  label.textContent = 'APPROVAL NEEDED';
+  el.appendChild(label);
+  const text = document.createElement('span');
+  text.textContent = prompt;
+  el.appendChild(text);
+  el.appendChild(document.createElement('br'));
+  const btnApprove = document.createElement('button');
+  btnApprove.className = 'approve';
+  btnApprove.textContent = 'Approve';
+  btnApprove.onclick = () => approve(true, btnApprove);
+  el.appendChild(btnApprove);
+  const btnDeny = document.createElement('button');
+  btnDeny.className = 'deny';
+  btnDeny.textContent = 'Deny';
+  btnDeny.onclick = () => approve(false, btnDeny);
+  el.appendChild(btnDeny);
   document.getElementById('messages').appendChild(el);
   el.scrollIntoView({behavior: 'smooth'});
   return el;
@@ -180,12 +197,7 @@ function startSession() {
         break;
       case 'approval_needed': {
         const prompt = data.prompt || JSON.stringify(data);
-        const el = addHtml(
-          `<div class="label">APPROVAL NEEDED</div>${prompt}<br>` +
-          `<button class="approve" onclick="approve(true,this)">Approve</button>` +
-          `<button class="deny" onclick="approve(false,this)">Deny</button>`,
-          'approval'
-        );
+        addApproval(prompt);
         break;
       }
       case 'error':

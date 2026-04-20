@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -234,7 +234,7 @@ class ChatModel:
             },
         )
 
-    async def ainvoke(self, messages: Any, on_text_delta: Any = None) -> AIMessage:
+    async def ainvoke(self, messages: Any, on_text_delta: Callable[[str], None] | None = None) -> AIMessage:
         system, chat_messages = _coerce_chat_messages(messages)
         if on_text_delta is not None:
             response = await self._client.achat_stream(

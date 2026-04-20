@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Sandbox exec crashed on `docker-py` demux edge case**. With
+  `tty=True` on the sandbox container, exec output came back without
+  the 8-byte multiplex header the daemon normally prepends, and
+  `docker-py`'s `demux_adaptor` blew up with `ValueError: N is not a
+  valid stream` (first byte of payload mis-read as stream_id). A full
+  traceback per failure, and the Hunter saw `exit_code=-1` with no
+  output. Root-cause fix: drop `tty=True` from `SandboxContainer.start`
+  — the container runs `sleep infinity`, it doesn't need a PTY, and a
+  container-level TTY setting leaks into exec attach behavior in some
+  Docker versions. Defensive fallback: `exec()` now catches that
+  specific `ValueError`, logs once at DEBUG, and retries with
+  `demux=False` so even if some future edge case produces
+  non-multiplexed output the Hunter still gets the combined stream as
+  `stdout`. Regression test asserts the retry path uses `demux=False`
+  and the combined stream reaches `ExecResult.stdout`.
 - **Sourcehunt sandboxes could not start** on current Docker versions
   because of two regressions introduced by the spec-013 container
   hardening commit. Every `HunterPool` file failed with

@@ -181,6 +181,13 @@ class SandboxContainer:
         if env:
             merged_env.update(env)
 
+        # docker-py's demux_adaptor raises `ValueError: N is not a valid
+        # stream` whenever the daemon emits output that isn't wrapped in
+        # the 8-byte multiplex stream header (1B stream_id + 3B zeros +
+        # 4B length). It happens on fast execs and a few TTY edge cases
+        # — noisy, but harmless since the command already ran. Retry
+        # once with `demux=False` so the Hunter still gets the output
+        # (lumped into stdout), trading stderr separation for reliability.
         try:
             exec_result = self._container.exec_run(
                 argv,
@@ -189,6 +196,27 @@ class SandboxContainer:
                 environment=merged_env,
                 workdir=workdir or self.config.working_dir,
             )
+            demuxed = True
+        except ValueError as demux_err:
+            logger.debug("exec_run demux failed (%s); retrying with demux=False", demux_err)
+            try:
+                exec_result = self._container.exec_run(
+                    argv,
+                    tty=False,
+                    demux=False,
+                    environment=merged_env,
+                    workdir=workdir or self.config.working_dir,
+                )
+                demuxed = False
+            except Exception as e:
+                logger.warning("Sandbox exec failed (retry)", exc_info=True)
+                return ExecResult(
+                    exit_code=-1,
+                    stdout="",
+                    stderr=str(e),
+                    duration_seconds=time.monotonic() - start_time,
+                    timed_out=False,
+                )
         except Exception as e:
             logger.warning("Sandbox exec failed", exc_info=True)
             return ExecResult(
@@ -200,10 +228,16 @@ class SandboxContainer:
             )
 
         exit_code = exec_result.exit_code if exec_result.exit_code is not None else -1
-        # `demux=True` returns (stdout_bytes, stderr_bytes); either may be None
-        out_bytes, err_bytes = exec_result.output or (b"", b"")
-        stdout = (out_bytes or b"").decode("utf-8", errors="replace")
-        stderr = (err_bytes or b"").decode("utf-8", errors="replace")
+        if demuxed:
+            # `demux=True` returns (stdout_bytes, stderr_bytes); either may be None
+            out_bytes, err_bytes = exec_result.output or (b"", b"")
+            stdout = (out_bytes or b"").decode("utf-8", errors="replace")
+            stderr = (err_bytes or b"").decode("utf-8", errors="replace")
+        else:
+            # `demux=False` returns the combined stream as bytes
+            combined = exec_result.output or b""
+            stdout = combined.decode("utf-8", errors="replace")
+            stderr = ""
         duration = time.monotonic() - start_time
         # `timeout` exits with 124 on timeout, 137 on SIGKILL
         timed_out = exit_code in (124, 137)

@@ -61,9 +61,7 @@ class TestCopyTreeInto:
         mock_container = MagicMock()
         mock_container.id = "cid123"
         mock_container.short_id = "cid1"
-        mock_container.exec_run.return_value = MagicMock(
-            exit_code=0, output=(b"", b"")
-        )
+        mock_container.exec_run.return_value = MagicMock(exit_code=0, output=(b"", b""))
         mock_client.containers.run.return_value = mock_container
         mock_from_env.return_value = mock_client
 
@@ -97,6 +95,47 @@ class TestCopyTreeInto:
         assert "--no-same-owner" in docker_argv, (
             f"extract tar must use --no-same-owner: {docker_argv}"
         )
+
+    @patch("docker.from_env")
+    def test_exec_falls_back_to_non_demux_on_demux_valueerror(self, mock_from_env):
+        """Regression: docker-py's demux_adaptor raises
+        `ValueError: N is not a valid stream` on non-multiplexed output.
+        Exec must retry with demux=False so the hunter still gets output.
+        See clearwing/sandbox/container.py.
+        """
+        mock_client = MagicMock()
+        mock_container = MagicMock()
+        mock_container.id = "cid-demux"
+        mock_container.short_id = "cid-demux"
+
+        first_result = MagicMock(exit_code=0, output=b"hello world\n")
+
+        call_count = {"n": 0}
+
+        def exec_side_effect(*args, **kwargs):
+            call_count["n"] += 1
+            if kwargs.get("demux") is True:
+                raise ValueError("48 is not a valid stream")
+            return first_result
+
+        mock_container.exec_run.side_effect = exec_side_effect
+        mock_client.containers.run.return_value = mock_container
+        mock_from_env.return_value = mock_client
+
+        cfg = SandboxConfig(image="alpine:latest")
+        sb = SandboxContainer(cfg)
+        sb.start()
+        result = sb.exec(["echo", "hello world"])
+
+        # Retry happened
+        assert call_count["n"] == 2
+        # Second call used demux=False
+        demux_values = [call.kwargs.get("demux") for call in mock_container.exec_run.call_args_list]
+        assert demux_values == [True, False]
+        # Combined stream came back as stdout
+        assert result.exit_code == 0
+        assert "hello world" in result.stdout
+        assert result.stderr == ""
 
     def test_copy_tree_into_before_start_raises(self):
         cfg = SandboxConfig(image="alpine:latest")
@@ -152,7 +191,8 @@ class TestHunterSandboxWritableWorkspace:
         mock_copy.assert_called_once_with("/tmp/repo", "/workspace")
         # git init should have been called
         git_calls = [
-            c for c in mock_exec.call_args_list
+            c
+            for c in mock_exec.call_args_list
             if isinstance(c[0][0], str) and "git init" in c[0][0]
         ]
         assert len(git_calls) == 1

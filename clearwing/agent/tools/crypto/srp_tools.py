@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import statistics
 import time
 import urllib.error
 import urllib.request
@@ -12,6 +11,7 @@ from typing import Any
 
 from clearwing.agent.tooling import interrupt, tool
 from clearwing.crypto.srp import SRP_GROUPS, SRPClient, derive_2skd, parse_secret_key
+from clearwing.crypto.stats import cohens_d, compute_stats, welch_t_test
 
 logger = logging.getLogger(__name__)
 
@@ -497,10 +497,10 @@ def srp_timing_attack(
     if len(group_a_times) < 2 or len(group_b_times) < 2:
         return {"success": False, "error": "Not enough samples collected"}
 
-    stats_a = _compute_stats(group_a_times, label_a)
-    stats_b = _compute_stats(group_b_times, label_b)
-    t_stat, p_value = _welch_t_test(group_a_times, group_b_times)
-    d = _cohens_d(group_a_times, group_b_times)
+    stats_a = compute_stats(group_a_times, label_a)
+    stats_b = compute_stats(group_b_times, label_b)
+    t_stat, p_value = welch_t_test(group_a_times, group_b_times)
+    d = cohens_d(group_a_times, group_b_times)
     significant = p_value < 0.05
 
     conclusion = (
@@ -521,122 +521,6 @@ def srp_timing_attack(
         "significant": significant,
         "conclusion": conclusion,
     }
-
-
-def _compute_stats(times: list[float], label: str) -> dict:
-    return {
-        "label": label,
-        "mean_ms": round(statistics.mean(times), 3),
-        "median_ms": round(statistics.median(times), 3),
-        "stdev_ms": round(statistics.stdev(times), 3) if len(times) > 1 else 0.0,
-        "min_ms": round(min(times), 3),
-        "max_ms": round(max(times), 3),
-        "n": len(times),
-    }
-
-
-def _welch_t_test(a: list[float], b: list[float]) -> tuple[float, float]:
-    """Welch's t-test (unequal variance) — returns (t_statistic, p_value)."""
-    import math
-
-    n1, n2 = len(a), len(b)
-    m1, m2 = statistics.mean(a), statistics.mean(b)
-    v1 = statistics.variance(a) if n1 > 1 else 0.0
-    v2 = statistics.variance(b) if n2 > 1 else 0.0
-
-    se = math.sqrt(v1 / n1 + v2 / n2) if (v1 / n1 + v2 / n2) > 0 else 1e-10
-    t = (m1 - m2) / se
-
-    # Welch-Satterthwaite degrees of freedom
-    num = (v1 / n1 + v2 / n2) ** 2
-    denom = (v1 / n1) ** 2 / (n1 - 1) + (v2 / n2) ** 2 / (n2 - 1) if (n1 > 1 and n2 > 1) else 1
-    df = num / denom if denom > 0 else 1
-
-    p = _t_to_p(abs(t), df)
-    return t, p
-
-
-def _t_to_p(t: float, df: float) -> float:
-    """Approximate two-tailed p-value from t-statistic using normal approx for large df."""
-    import math
-
-    if df > 30:
-        z = t
-        p = math.erfc(abs(z) / math.sqrt(2))
-        return p
-    # For small df, use a rough beta-function approximation
-    x = df / (df + t * t)
-    p = _regularized_beta(x, df / 2, 0.5)
-    return p
-
-
-def _regularized_beta(x: float, a: float, b: float, iterations: int = 200) -> float:
-    """Regularized incomplete beta function via continued fraction."""
-    import math
-
-    if x <= 0:
-        return 0.0
-    if x >= 1:
-        return 1.0
-
-    ln_prefix = a * math.log(x) + b * math.log(1 - x) - math.log(a)
-    try:
-        ln_beta = math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b)
-    except ValueError:
-        return 0.5
-
-    # Lentz's continued fraction
-    f = 1.0
-    c = 1.0
-    d = 1.0 - (a + b) * x / (a + 1)
-    if abs(d) < 1e-30:
-        d = 1e-30
-    d = 1.0 / d
-    f = d
-
-    for m in range(1, iterations + 1):
-        # Even step
-        num = m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m))
-        d = 1.0 + num * d
-        if abs(d) < 1e-30:
-            d = 1e-30
-        c = 1.0 + num / c
-        if abs(c) < 1e-30:
-            c = 1e-30
-        d = 1.0 / d
-        f *= d * c
-
-        # Odd step
-        num = -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1))
-        d = 1.0 + num * d
-        if abs(d) < 1e-30:
-            d = 1e-30
-        c = 1.0 + num / c
-        if abs(c) < 1e-30:
-            c = 1e-30
-        d = 1.0 / d
-        delta = d * c
-        f *= delta
-
-        if abs(delta - 1.0) < 1e-10:
-            break
-
-    try:
-        result = math.exp(ln_prefix - ln_beta) * f
-    except OverflowError:
-        return 0.5
-    return min(max(result, 0.0), 1.0)
-
-
-def _cohens_d(a: list[float], b: list[float]) -> float:
-    """Cohen's d effect size."""
-    import math
-
-    m1, m2 = statistics.mean(a), statistics.mean(b)
-    v1 = statistics.variance(a) if len(a) > 1 else 0.0
-    v2 = statistics.variance(b) if len(b) > 1 else 0.0
-    pooled_std = math.sqrt((v1 + v2) / 2)
-    return abs(m1 - m2) / pooled_std if pooled_std > 0 else 0.0
 
 
 def get_srp_tools() -> list:

@@ -68,6 +68,15 @@ def _get_crypto_tools() -> list[Any]:
         return []
 
 
+def _get_timing_tools() -> list[Any]:
+    try:
+        from .crypto.timing_tools import get_timing_tools
+
+        return get_timing_tools()
+    except ImportError:
+        return []
+
+
 def _get_analysis_tools() -> list[Any]:
     try:
         from .data.analysis_tools import analyze_source, clone_and_analyze, trace_taint_flows
@@ -140,6 +149,7 @@ def get_all_tools() -> list[Any]:
     tools.extend(_get_auth_recorder_tools())
     tools.extend(_get_mitm_tools())
     tools.extend(_get_crypto_tools())
+    tools.extend(_get_timing_tools())
     tools.extend(_get_analysis_tools())
     tools.extend(get_mcp_tools())
     tools.extend(get_exploit_search_tools())

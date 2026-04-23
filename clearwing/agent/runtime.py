@@ -598,6 +598,46 @@ def populate_knowledge_graph(
                 if algo:
                     kg.add_algorithm(algo)
 
+        # v0.4: Credential tools
+        elif tool_name == "analyze_2skd_entropy" and isinstance(data, dict):
+            algo = data.get("algorithm", "")
+            iterations = data.get("iterations", 0)
+            if algo:
+                kg.add_algorithm(algo)
+            if algo and iterations and target:
+                entity = kg.add_kdf_config(algo, iterations, target)
+                assessment = data.get("assessment", "")
+                if assessment:
+                    entity.properties["2skd_assessment"] = assessment
+                entity.properties["combined_entropy_bits"] = data.get("combined_entropy_bits", 0)
+
+        elif tool_name == "test_secret_key_validation" and isinstance(data, dict):
+            if data.get("factor_separation"):
+                signals = data.get("separation_signals", [])
+                desc = data.get("conclusion", "2SKD factor separation detected")
+                eid = f"vuln:2skd_factor_separation:{':'.join(signals)}"
+                kg.add_entity("exploit", eid, description=desc)
+                if target:
+                    kg.add_relationship(target, eid, "VULNERABLE_TO")
+
+        elif tool_name == "enumerate_secret_key_format" and isinstance(data, dict):
+            fmt = data.get("format_analysis", {})
+            entropy = fmt.get("total_entropy_bits", 0)
+            if target and entropy:
+                km = kg.add_key_material("secret_key", target, entropy_bits=entropy)
+                risks = data.get("predictability_risks", [])
+                if risks:
+                    km.properties["predictability_risks"] = risks
+
+        elif tool_name == "offline_crack_setup" and isinstance(data, dict):
+            algo = data.get("algorithm", "")
+            iterations = data.get("iterations", 0)
+            if algo and iterations and target:
+                entity = kg.add_kdf_config(algo, iterations, target)
+                feasibility = data.get("feasibility", "")
+                if feasibility:
+                    entity.properties["cracking_feasibility"] = feasibility
+
         kg.save()
         return nx.node_link_data(kg._graph)
     except Exception:
